@@ -1,18 +1,17 @@
-#include <Windows.h>
-
-#include <GL/glew.h>
-#include <GL/gl.h>
-#include <GL/glu.h>
-#include <GL/wglew.h>
 #include <iostream>
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
 #include <vector>
 #include <string>
-#include "C:\Users\Elias\Documents\Visual Studio 2010\Projects\waveplot_git\waveplot_git\src\lin_alg.h"
-//#include "lin_alg.h"
 
+#include <GL/glew.h>
+#include <GL/gl.h>
+#include <GL/glu.h>
+
+#include <SDL/SDL.h>
+
+#include "lin_alg.h"
 #include "common.h"
 #include "objloader.h"
 #include "shader.h"
@@ -27,19 +26,18 @@
 
 using namespace std;
 
-
-HGLRC hRC = NULL;
-HDC hDC	  = NULL;
-HWND hWnd = NULL;
-HINSTANCE hInstance;
-
-bool active=TRUE;
-bool fullscreen=FALSE;
+bool active=true;
+bool fullscreen=false;
 bool keys[256];
 
 static const double gamma = 6.67;
 
-static LPPOINT cursorPos = new POINT;	/* holds cursor position */
+SDL_Window *mainwindow; /* Our window handle */
+SDL_GLContext maincontext; /* Our opengl context handle */
+
+static struct mousePos {
+	int x, y;
+} cursorPos;
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);	// declare wndproc
 
