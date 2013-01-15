@@ -83,7 +83,7 @@ ShaderProgram::ShaderProgram(const std::string &vs_filename, const std::string &
 
 char* ShaderProgram::readShaderFromFile(const std::string &filename, size_t *filesize)
 {
-	std::ifstream in(filename, std::ios::in | std::ios::binary);
+	std::ifstream in(filename.c_str(), std::ios::in | std::ios::binary);
 
 	if (!in.is_open()) { printf("ShaderProgram: couldn't open file %s (doesn't exist?)\n", filename.c_str()); return NULL; }
 	size_t length = cpp_getfilesize(in);
@@ -130,15 +130,15 @@ GLint ShaderProgram::checkShaders(GLint QUERY) // QUERY = usually GL_COMPILE_STA
 	}
 
 	if (has_errors) {	
-		OutputDebugString("\nSHADER ERROR OUTPUT:\n-----------------------------------------------------------------");
+		std::cerr << "\nSHADER ERROR OUTPUT:\n-----------------------------------------------------------------";
 		for (int i = 0; i < 3; i++) {
 			if (!succeeded[i]) {
-				OutputDebugString("\n\n");
-				OutputDebugString(log_buffers[i]);
-				OutputDebugString("\n\n");
+				std::cerr << "\n\n";
+				std::cerr << log_buffers[i];
+				std::cerr << "\n\n";
 			}
 		}
-		OutputDebugString("\n---------------------------------------------------\n\n");
+		std::cerr << "\n---------------------------------------------------\n\n";
 	}
 	for (int i = 0; i < 3; i++) {	
 		delete [] log_buffers[i];

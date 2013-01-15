@@ -5,11 +5,17 @@
 #include <vector>
 #include <string>
 
+#include <cassert>
+#include <signal.h>
+
+#define GL_GLEXT_PROTOTYPES 1
+
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
+#include <GL/glext.h>
 
-#include <SDL/SDL.h>
+#include <GL/glfw.h>
 
 #include "lin_alg.h"
 #include "common.h"
@@ -17,6 +23,7 @@
 #include "shader.h"
 #include "model.h"
 #include "texture.h"
+
 
 
 #define WINDOW_WIDTH 1440.0
@@ -28,18 +35,13 @@ using namespace std;
 
 bool active=true;
 bool fullscreen=false;
-bool keys[256];
+bool keys[256] = { false };
 
-static const double gamma = 6.67;
-
-SDL_Window *mainwindow; /* Our window handle */
-SDL_GLContext maincontext; /* Our opengl context handle */
+static const double GAMMA = 6.67;
 
 static struct mousePos {
 	int x, y;
 } cursorPos;
-
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);	// declare wndproc
 
 float c_vel_fwd = 0, c_vel_side = 0;
 
@@ -61,7 +63,7 @@ GLuint uni_NP_modelview_loc,
 
 static GLint earth_tex_id, hmap_id;
 
-bool mouseLocked;
+bool mouseLocked = true;
 
 GLfloat running = 0.0;
 
@@ -112,40 +114,41 @@ void control()
 	static const float side_modifier = 0.005;
 
 	if(mouseLocked) {
-		GetCursorPos(cursorPos);
-		SetCursorPos(HALF_WINDOW_WIDTH, HALF_WINDOW_HEIGHT);
-		float dx = (HALF_WINDOW_WIDTH - cursorPos->x);
-		float dy = -(HALF_WINDOW_HEIGHT - cursorPos->y);
+		glfwDisable(GLFW_MOUSE_CURSOR);
+		glfwGetMousePos(&cursorPos.x, &cursorPos.y);
+		glfwSetMousePos(HALF_WINDOW_WIDTH, HALF_WINDOW_HEIGHT);
+		float dx = (HALF_WINDOW_WIDTH - cursorPos.x);
+		float dy = -(HALF_WINDOW_HEIGHT - cursorPos.y);
 
-		if (keys['W']) {
+		if (keys['W'] == GLFW_PRESS) {
 			c_vel_fwd += fwd_modifier;
 			//keys['W'] = FALSE;
 		} 
-		if (keys['S']) {
+		if (keys['S'] == GLFW_PRESS) {
 			c_vel_fwd -= fwd_modifier;
 			//keys['S'] = FALSE;
 		}
 		c_vel_fwd *= 0.97;
 
-		if (keys['A']) {
+		if (keys['A'] == GLFW_PRESS) {
 			c_vel_side -= side_modifier;
 			//keys['A'] = FALSE;
 		} 
-		if (keys['D']) {
+		if (keys['D'] == GLFW_PRESS) {
 			c_vel_side += side_modifier;
 			//keys['D'] = FALSE;
 		} 
 		c_vel_side *= 0.95;
 
 
-		if (keys['N']) {
+		if (keys['N'] == GLFW_PRESS) {
 			plot_normals = !plot_normals;
-			keys['N'] = FALSE;
+			keys['N'] = false;
 		}
 		static GLint PMODE = GL_FILL;
 		if (keys['P']) {
 			glPolygonMode(GL_FRONT_AND_BACK, (PMODE = (PMODE == GL_FILL ? GL_LINE : GL_FILL)));
-			keys['P'] = FALSE;
+			keys['P'] = false;
 		}
 		if (dy != 0) {
 			rotatey(dy);
@@ -154,6 +157,9 @@ void control()
 			rotatex(dx);
 		}
 
+	}
+	else {
+		glfwEnable(GLFW_MOUSE_CURSOR);
 	}
 	/*if (keys[VK_UP])
 	{
@@ -253,7 +259,7 @@ GLushort *generateIndices() {
 	return indices;
 }
 
-int InitGL(void)
+int initGL(void)
 {
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 
@@ -267,24 +273,28 @@ int InitGL(void)
 	}
 
 	regular_shader = new ShaderProgram("shaders/regular.vs", "none", "shaders/regular.fs");
-	if (regular_shader->is_bad()) { printf("Fatal: shader error (regular).\n"); return FALSE; }
+	if (regular_shader->is_bad()) { printf("Fatal: shader error (regular).\n"); return 0; }
 
 	normal_plot_shader = new ShaderProgram("shaders/normalplot.vs", "shaders/normalplot.gs", "shaders/normalplot.fs");
-	if (normal_plot_shader->is_bad()) { printf("Fatal: shader error (normalplot).\n"); return FALSE; }
+	if (normal_plot_shader->is_bad()) { printf("Fatal: shader error (normalplot).\n"); return 0; }
 
+	printf("Loading models...");
 	GLuint sphere_facecount;
 	GLuint sphere_VBOid = loadNewestBObj("models/maapallo_napa_korjattu.bobj", &sphere_facecount);
 	skybox_VBOid = loadNewestBObj("models/skybox.bobj", &skybox_facecount);
+	printf("done.\n");
 
+	printf("Loading textures...");
 	indices = generateIndices();
 	TextureBank::add(Texture("textures/EarthTexture.png", GL_LINEAR));
 	TextureBank::add(Texture("textures/earth_height_normal_map.png", GL_LINEAR));
+	printf("done.\n");
 
 	earth_tex_id = TextureBank::get_id_by_name("textures/EarthTexture.png");
 	hmap_id = TextureBank::get_id_by_name("textures/earth_height_normal_map.png");
 
 	if (!TextureBank::validate())
-		return FALSE;
+		return false;
 
 	/*
 	 * AFTER ALL THIS, THE TEXTURE DATA CAN AND MUST BE FREED!!!
@@ -398,7 +408,7 @@ int InitGL(void)
 
 	
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOid);
-	return TRUE;
+	return 1;
 
 }
 
@@ -523,7 +533,7 @@ void drawSpheres()
 				}
 
 				else {
-					acceleration += 0.008*(gamma*(*iter).mass)/(r.length3()*r.length3())*r;
+					acceleration += 0.008*(GAMMA*(*iter).mass)/(r.length3()*r.length3())*r;
 				}
 			}
 
@@ -550,9 +560,9 @@ void drawSpheres()
 		vec4 light_pos(sin(running), cos(0.11*running), -5.0, 1.0);
 		if (!(*current).lightsrc()) {
 			vec4 light = (light_pos - (*current).position);
-			light.w() = 0.0;
+			light(V::w) = 0.0;
 			light.normalize();
-			light.w() = 1.0;
+			light(V::w) = 1.0;
 
 			glUniform4fv(uni_light_loc, 1, (const GLfloat*) light.rawData());
 		}
@@ -588,345 +598,87 @@ void drawSpheres()
 	}
 }
 
-void KillGLWindow(void)
-{
-	if(hRC)
-	{
-		if(!wglMakeCurrent(NULL,NULL))
-		{
-			MessageBox(NULL, "wglMakeCurrent(NULL,NULL) failed", "erreur", MB_OK | MB_ICONINFORMATION);
-		}
+/* callbacks */
 
-		if (!wglDeleteContext(hRC))
-		{
-			MessageBox(NULL, "RELEASE of rendering context failed.", "error", MB_OK | MB_ICONINFORMATION);
-		}
-		hRC=NULL;
+void signal_handler(int sig) {
+	exit(sig);
+}
 
-		if(hDC && !ReleaseDC(hWnd, hDC))
-		{
-			MessageBox(NULL, "Release DC failed.", "ERREUX", MB_OK | MB_ICONINFORMATION);
-			hDC=NULL;
-		}
+void GLFWCALL key_callback(int key, int action) {
+	keys[key] = (action != 0);	// action == GLFW_PRESS (==1) or GLFW_RELEASE (==0)
+}
 
-		if(hWnd && !DestroyWindow(hWnd))
-		{
-			MessageBox(NULL, "couldn't release hWnd.", "erruexz", MB_OK|MB_ICONINFORMATION);
-			hWnd=NULL;
-		}
+int createWindow() {
 
-		if (!UnregisterClass("OpenGL", hInstance))
-		{
-			MessageBox(NULL, "couldn't unregister class.", "err", MB_OK | MB_ICONINFORMATION);
-			hInstance=NULL;
-		}
-
+	if (!glfwInit()) {
+			fprintf(stderr, "glfwInit failed.\n");
+			return 0;
 	}
+
+	//glfwOpenWindowHint(GLFW_FSAA_SAMPLES, 4); // 4x antialiasing
+	//glfwOpenWindowHint(GLFW_OPENGL_VERSION_MAJOR, 3); // We want OpenGL 3.3
+	//glfwOpenWindowHint(GLFW_OPENGL_VERSION_MINOR, 3);
+	//glfwOpenWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); //We don't want the old OpenGL
+
+	// Open a window and create its OpenGL context
+	if( !glfwOpenWindow( WINDOW_WIDTH, WINDOW_HEIGHT, 0,0,0,0, 32,0, GLFW_WINDOW ) )
+	{
+	    fprintf( stderr, "Failed to open GLFW window\n" );
+	    glfwTerminate();
+	    return 0;
+	}
+	glfwSetWindowTitle( "lolz" );
+
+	// Initialize GLEW
+	//glewExperimental=true; // Needed in core profile
+	if (glewInit() != GLEW_OK) {
+	    fprintf(stderr, "Failed to initialize GLEW\n");
+	    return 0;
+	}
+
+	glfwSetKeyCallback(key_callback);
 
 }
 
+int main(int argc, char* argv[]) {
 
-BOOL CreateGLWindow(char* title, int width, int height, int bits, bool fullscreenflag)
-{
-	GLuint PixelFormat;
-	WNDCLASS wc;
-	DWORD dwExStyle;
-	DWORD dwStyle;
-
-	RECT WindowRect;
-	WindowRect.left=(long)0;
-	WindowRect.right=(long)width;
-	WindowRect.top=(long)0;
-	WindowRect.bottom=(long)height;
-
-	fullscreen = fullscreenflag;
-
-	hInstance = GetModuleHandle(NULL);
-	wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
-	wc.lpfnWndProc = (WNDPROC) WndProc;
-	wc.cbClsExtra = 0;
-	wc.cbWndExtra = 0;
-	wc.hInstance = hInstance;
-	wc.hIcon = LoadIcon(NULL, IDI_WINLOGO);
-	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wc.hbrBackground = NULL;
-	wc.lpszMenuName = NULL;
-	wc.lpszClassName = "OpenGL";
-
-	if (!RegisterClass(&wc))
-	{
-		MessageBox(NULL, "FAILED TO REGISTER THE WINDOW CLASS.", "ERROR", MB_OK | MB_ICONEXCLAMATION);
-		return FALSE;
-	}
-
-	DEVMODE dmScreenSettings;
-	memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));
-	dmScreenSettings.dmSize = sizeof(dmScreenSettings);
-	dmScreenSettings.dmPelsWidth = width;
-	dmScreenSettings.dmPelsHeight = height;
-	dmScreenSettings.dmBitsPerPel = bits;
-	dmScreenSettings.dmFields= DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
-
-	/*
-	 * no need to test this now that fullscreen is turned off
-	 *
-	if (ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN) != DISP_CHANGE_SUCCESSFUL)
-	{
-		if (MessageBox(NULL, "The requested fullscreen mode is not supported by\nyour video card. Use Windowed mode instead?", "warn", MB_YESNO | MB_ICONEXCLAMATION)==IDYES)
-		{
-			fullscreen=FALSE;
-		}
-		else {
-
-			MessageBox(NULL, "Program willl now close.", "ERROR", MB_OK|MB_ICONSTOP);
-			return FALSE;
-		}
-	}*/
-
-	ShowCursor(FALSE);
-	if (fullscreen)
-	{
-		dwExStyle=WS_EX_APPWINDOW;
-		dwStyle=WS_POPUP;
-	
-	}
-
-	else {
-		dwExStyle=WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
-		dwStyle=WS_OVERLAPPEDWINDOW;
-	}
-
-	AdjustWindowRectEx(&WindowRect, dwStyle, FALSE, dwExStyle);
-
-	if(!(hWnd=CreateWindowEx( dwExStyle, "OpenGL", title,
-							  WS_CLIPSIBLINGS | WS_CLIPCHILDREN | dwStyle,
-							  0, 0,
-							  WindowRect.right-WindowRect.left,
-							  WindowRect.bottom-WindowRect.top,
-							  NULL,
-							  NULL,
-							  hInstance,
-							  NULL)))
-	{
-		KillGLWindow();
-		MessageBox(NULL, "window creation error.", "ERROR", MB_OK|MB_ICONEXCLAMATION);
-		return FALSE;
-	}
+	if (!createWindow()) { fprintf(stderr, "couldn't create window.\n"); exit(1); }
+	if (!initGL()) { fprintf(stderr, "Failed to initialized OpenGL.\n"); exit(1); }
 
 
-	static PIXELFORMATDESCRIPTOR pfd =
-	{
-		sizeof(PIXELFORMATDESCRIPTOR),
-		1,
-		PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
-		PFD_TYPE_RGBA,
-		bits,
-		0, 0, 0, 0, 0, 0,
-		0,
-		0,
-		0,
-		0, 0, 0, 0,
-		16,
-		0,
-		0,
-		PFD_MAIN_PLANE,
-		0,
-		0, 0, 0
-	};
+	signal(SIGINT, signal_handler);
 
-	if (!(hDC=GetDC(hWnd)))
-	{
-		KillGLWindow();
-		MessageBox(NULL, "CANT CREATE A GL DEVICE CONTEXT.", "ERROR", MB_OK|MB_ICONEXCLAMATION);
-		return FALSE;
-	}
-
-	if (!(PixelFormat = ChoosePixelFormat(hDC, &pfd)))
-	{
-		KillGLWindow();
-		MessageBox(NULL, "cant find a suitable pixelformat.", "ERROUE", MB_OK|MB_ICONEXCLAMATION);
-		return FALSE;
-	}
-
-
-	if(!SetPixelFormat(hDC, PixelFormat, &pfd))
-	{
-		KillGLWindow();
-		MessageBox(NULL, "Can't SET ZE PIXEL FORMAT.", "ERROU", MB_OK|MB_ICONEXCLAMATION);
-		return FALSE;
-	}
-
-	if(!(hRC=wglCreateContext(hDC)))
-	{
-		KillGLWindow();
-		MessageBox(NULL, "WGLCREATECONTEXT FAILED.", "ERREUHX", MB_OK|MB_ICONEXCLAMATION);
-		return FALSE;
-	}
-
-	if(!wglMakeCurrent(hDC, hRC))
-	{
-		KillGLWindow();
-		MessageBox(NULL, "Can't activate the gl rendering context.", "ERAIX", MB_OK|MB_ICONEXCLAMATION);
-		return FALSE;
-	}
-
-	ShowWindow(hWnd, SW_SHOW);
-	SetForegroundWindow(hWnd);
-	SetFocus(hWnd);
-	ResizeGLScene(width, height);
-	mouseLocked = true;
-
-	if (!InitGL())
-	{
-		KillGLWindow();
-		MessageBox(NULL, "InitGL() failed.", "ERRROR", MB_OK|MB_ICONEXCLAMATION);
-		return FALSE;
-	}
-
-	return TRUE;
-}
-
-
-
-LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-	switch(uMsg)
-	{
-	case WM_ACTIVATE:
-		if(!HIWORD(wParam))
-		{
-			active=TRUE;
-		}
-
-		else 
-		{
-			active=FALSE;
-		}
-		return 0;
-
-	case WM_SYSCOMMAND:
-		switch(wParam)
-		{
-		case SC_SCREENSAVE:
-		case SC_MONITORPOWER:
-			return 0;
-		}
-		break;
-	
-	case WM_CLOSE:
-		{
-		PostQuitMessage(0);
-		return 0;
-		}
-
-	case WM_KEYDOWN:
-		{
-			keys[wParam]=TRUE;
-			return 0;
-		}
-	case WM_KEYUP:
-		{
-			keys[wParam]=FALSE;
-			return 0;
-		}
-	case WM_SIZE:
-		{
-			ResizeGLScene(LOWORD(lParam), HIWORD(lParam));
-		}
-	;
-	}
-
-	/* the rest shall be passed to defwindowproc. (default window procedure) */
-	return DefWindowProc(hWnd, uMsg, wParam, lParam);
-}
-
-
-
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
-{
-
-	/* allocate console for debug output (only works with printf doe) */
-
-	if(AllocConsole()) {
-    freopen("CONOUT$", "wt", stdout);
-    SetConsoleTitle("debug output");
-    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_RED);
-	}
-	
-	std::string cpustr(checkCPUCapabilities());
-	if (cpustr != "OK") { MessageBox(NULL, cpustr.c_str(), "Fatal error.", MB_OK); return -1; }
-
-	MSG msg;
-	BOOL done=FALSE;
-
-	//if(MessageBox(NULL, "Would you like to run in fullscreen mode?", "Start fullscreen?", MB_YESNO|MB_ICONQUESTION)==IDNO)
-	//{  // no need to ask this, since it doesn't work anyway
-	fullscreen=FALSE;
-	//}
-
-	/*
-	 * Dirty trick to "delete" the previously existing shader.log file
-	 */
-
-	std::ofstream logfile("shader.log", std::ios::trunc);
-	logfile << "[shader.log]\n\n";
-	logfile.close();
-
-	if(!CreateGLWindow("opengl framework stolen from NeHe", WINDOW_WIDTH, WINDOW_HEIGHT, 32, fullscreen))
-	{
-		return 1;
-	}
+	int c;
 	
 	bool esc = false;
 
+	std::string cpustr(checkCPUCapabilities());
+	if (cpustr != "OK") { fprintf(stderr, "cpuid error (\"%s\")\n", cpustr.c_str()); return 1; }
 
-
-
+	bool done=false;
 
 	while(!done)
 	{
-		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
-		{
-			if(msg.message == WM_QUIT)
-			{
-				done=TRUE;
-			}
-			else {
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			}
-		}
-		else {
-			if (active)
-			{
-				if(keys[VK_ESCAPE])
-				{
-					if (!esc) {
-						mouseLocked = !mouseLocked;
-						ShowCursor(mouseLocked ? FALSE : TRUE);
-						esc = true;
-					}
-					//done=TRUE;
-				}
-				else{
-					esc=false;
-					
-					control();
-					update_c_pos();
-					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-					drawSpheres();
-				//	drawSkybox();
 
-					SwapBuffers(hDC);
-				}
-			}
-		}
+		control();
+		update_c_pos();
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		drawSpheres();
+		if (glfwGetKey(GLFW_KEY_ESC) == GLFW_PRESS) { if (!keys[GLFW_KEY_ESC]) { mouseLocked = !mouseLocked; keys[GLFW_KEY_ESC] = true; }  else { keys[GLFW_KEY_ESC] = false; } }
+		glfwSwapBuffers();
+
+		done = !glfwGetWindowParam(GLFW_OPENED);
+		//	drawSkybox();
+
 
 	}
 
-	KillGLWindow();
+	glfwTerminate();
 	glDeleteBuffers(1, &VBOid);
 	glDeleteBuffers(1, &IBOid);
-	return (msg.wParam);
+
+
+	return 0;
+
 }
 

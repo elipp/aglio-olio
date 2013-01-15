@@ -55,19 +55,23 @@ static inline float MM_DPPS_XYZW_SSE41(__m128 a, __m128 b) {
 // fallback
 
 const char* checkCPUCapabilities() {
-	int a,b,c,d;
-	cpuid(0, a, b, c, d);
 
-	if (!(a[3] & (0x1 << 25))) {
+	cpuid_t c;
+	memset(&c, 0, sizeof(c));
+	cpuid(0x1, c);
+
+	fprintf(stderr, "cpuid results: %x %x %x %x\n", c.eax, c.ebx, c.ecx, c.edx);
+
+	/*if (!(c.eax & (0x1 << 25))) {
 		return "SSE not supported by host processor!";
 	}
-	else if (!(a[2] & (0x1))) {
+	else if (!(c.ecx & (0x1))) {
 		printf("SSE3 not supported by host processor. Using SSE for dot product computation.\n"); 
 		MM_DPPS_XYZ = MM_DPPS_XYZ_SSE;
 		MM_DPPS_XYZW = MM_DPPS_XYZW_SSE;
 	}
 	
-	else if (!(a[2] & (0x1 << 19))) {
+	else if (!(c.ecx & (0x1 << 19))) {
 		printf("NOTE: SSE4.1 not supported by host processor. Using SSE3 for dot product computation.\n");
 		MM_DPPS_XYZ = MM_DPPS_XYZ_SSE3;
 		MM_DPPS_XYZW = MM_DPPS_XYZW_SSE3;
@@ -76,8 +80,9 @@ const char* checkCPUCapabilities() {
 		printf("Using SSE4.1 for _mm_dp_ps.\n");
 		MM_DPPS_XYZ = MM_DPPS_XYZ_SSE41;
 		MM_DPPS_XYZW = MM_DPPS_XYZW_SSE41;
-	}
-	
+	}*/
+	MM_DPPS_XYZ = MM_DPPS_XYZ_SSE41;
+	MM_DPPS_XYZW = MM_DPPS_XYZW_SSE41;
 	return "OK";
 
 }
@@ -85,7 +90,7 @@ const char* checkCPUCapabilities() {
 vec4::vec4(float _x, float _y, float _z, float _w) {
 	// must use _mm_setr_ps for this constructor. Note 'r' for reversed.
 	//data = _mm_setr_ps(_x, _y, _z, _w);
-	data = _mm_set_ps(_w, _z, _y, _x);	// could be faster, haven't tested
+	data.v_t = _mm_set_ps(_w, _z, _y, _x);	// could be faster, haven't tested
 
 }
 
@@ -108,7 +113,7 @@ void vec4::operator*=(float scalar) {
 
 vec4 operator*(float scalar, const vec4& v) {
 
-	vec4 r(v.data);
+	vec4 r(v);
 	r *= scalar;
 	return r;
 
@@ -116,7 +121,7 @@ vec4 operator*(float scalar, const vec4& v) {
 
 vec4 vec4::operator*(float scalar) const{
 
-	vec4 v(this->data);
+	vec4 v(*this);
 	v *= scalar;
 	return v;
 
@@ -319,10 +324,10 @@ mat4::mat4(const vec4& c1, const vec4& c2, const vec4& c3, const vec4& c4) {
 // must be passed as references lolz, otherwise the last one will lose its alignment
 
 mat4::mat4(const __m128& c1, const __m128&  c2, const __m128&  c3, const __m128& c4) {
-	data[0] = c1;
-	data[1] = c2;
-	data[2] = c3;
-	data[3] = c4;
+	data[0] = (m128_f32_union)c1;
+	data[1] = (m128_f32_union)c2;
+	data[2] = (m128_f32_union)c3;
+	data[3] = (m128_f32_union)c4;
 }
 
 mat4 mat4::operator* (const mat4& R) const {
@@ -369,7 +374,7 @@ vec4 mat4::operator* (const vec4& R) const {
 	const mat4 M = (*this).transposed();
 	vec4 v;
 	for (int i = 0; i < 4; i++) 
-		v(i) = MM_DPPS_XYZW(M.data[i].v_t, R.getData());
+		v(i) = MM_DPPS_XYZW(M.data[i].v_t, R.getData().v_t);
 		//v.getData().f32[i] = _mm_dp_ps(M.data[i], R.getData(), xyzw_dot_mask).f32[0];
 
 	return v;
@@ -411,7 +416,7 @@ void mat4::identity() {
 
 vec4 mat4::row(int i) const {
 
-	return vec4((*this).transposed().data[i]);
+	return vec4(this->transposed().data[i]);
 	// benchmarks for 100000000 iterations
 	// Two transpositions, no redirection to mat4::column:	15.896s
 	// Two transpositions, redirection to mat4::column:		18.332s
@@ -550,9 +555,9 @@ mat4 mat4::transposed() const {
 
 
 void mat4::invert() {
-
+	mat4 i = this->inverted();
+	memcpy(data, &i.data, sizeof(i.data));
 }
-
 
 mat4 mat4::inverted() const {
 
@@ -568,7 +573,7 @@ mat4 mat4::inverted() const {
 
 	__m128 det, tmp1;
 
-	const float *src = (const float*)this->rawData();
+	//const float *src = (const float*)this->rawData();
 
 	// The following code fragment was copied (with minor adaptations of course)
 	// from http://download.intel.com/design/PentiumIII/sml/24504301.pdf.
@@ -656,9 +661,24 @@ mat4 mat4::inverted() const {
 
 
 inline float det(const mat4 &m) {
-
-
+	return 0.0;
 }
+
+mat4 mat4::scale(const vec4 &v) {
+	// assign to main diagonal
+	mat4 m;
+	m(0,0) = v.element(V::x);
+	m(1,1) = v.element(V::y);
+	m(2,2) = v.element(V::z);
+	m(3,3) = v.element(V::w);
+	return m;
+}
+mat4 mat4::translation(const vec4 &v) {
+	mat4 m = identity_const;
+	m.assignToColumn(3, v);
+	return m;
+}
+
 
 // i'm not quite sure why anybody would ever want to construct a quaternion like this :-XD
 Quaternion::Quaternion(float x, float y, float z, float w) { 
@@ -692,7 +712,7 @@ void Quaternion::normalize() {
 
 	Quaternion &Q = (*this);
 	//const float mag_squared = _mm_dp_ps(Q.data, Q.data, xyzw_dot_mask).f32[0];
-	const float mag_squared = MM_DPPS_XYZW(Q.data, Q.data);
+	const float mag_squared = MM_DPPS_XYZW(Q.data.v_t, Q.data.v_t);
 	if (fabs(mag_squared-1.0) > 0.001) {	// to prevent calculations from exploding
 		Q.data = _mm_mul_ps(Q.data.v_t, _mm_set1_ps(1.0/sqrt(mag_squared)));
 	}
@@ -716,7 +736,7 @@ Quaternion Quaternion::operator*(const Quaternion &b) const {
 	ret += a.element(Q::w)*b + b.element(Q::w)*a;
 
 	//ret(Q::w) = a.data.f32[Q::w]*b.data.f32[Q::w] - _mm_dp_ps(a.data, b.data, xyz_dot_mask).f32[0];
-	ret(Q::w) = a.element(Q::w) * b.element(Q::w) - MM_DPPS_XYZ(a.data, b.data);
+	ret(Q::w) = a.element(Q::w) * b.element(Q::w) - MM_DPPS_XYZ(a.data.v_t, b.data.v_t);
 	return ret;
 
 }

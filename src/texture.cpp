@@ -123,13 +123,13 @@ bool TextureBank::validate() {
 					printf("[Textures] invalid textures detected:\n");
 					
 					if (t.badheader()) {
-						printf("%s: bad file header.\n", t.getName()); }
+						printf("%s: bad file header.\n", t.getName().c_str()); }
 					
 					else if (t.nosuch())
-						printf("%s: no such file or directory.\n", t.getName()); 
+						printf("%s: no such file or directory.\n", t.getName().c_str());
 
 					else if (t.otherbad())
-						printf("%s: file either is not square (n-by-n), or not power of two (128x128, 256x256 etc.)\n\n", t.getName()); 
+						printf("%s: file either is not square (n-by-n), or not power of two (128x128, 256x256 etc.)\n\n", t.getName().c_str());
 					}
 					
 			}

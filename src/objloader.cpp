@@ -1,5 +1,3 @@
-#include <Windows.h>
-
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
@@ -297,7 +295,7 @@ unsigned short int* loadBObj(const char* filename, bool compressed, GLuint *VBOi
 	{
 		if (!checkext(filename, CBOBJ)){ return NULL; }	
 		printf("input file is compressed. decompressing\n");
-		decompress_qlz(infile, &buffer);
+		//decompress_qlz(infile, &buffer);
 	}
 	else {
 		
@@ -461,15 +459,11 @@ bool headerValid(char* buffer)
 	return (*((int*)buffer) == bobj ? true : false);	// "bobj" == 0x6a626f62;
 }
 
-
+/*
 
 size_t decompress(FILE *file, char** buffer)
 {
-	/* 
-	 * THE FILE NEEDS TO BE fopen()ED BY THE TIME THIS FUNCTION IS CALLED !!
-	 *
-	 */	
-	
+
 	// uncompress file with quicklz.
 
 	qlz_state_decompress *state = new qlz_state_decompress;
@@ -491,7 +485,7 @@ size_t decompress(FILE *file, char** buffer)
 	return filesize;
 }
 
-
+*/
 
 unsigned short int* loadNewBObj(const char* filename, GLuint *VBOid, GLuint *facecount) 
 {
@@ -551,9 +545,9 @@ unsigned short int* loadNewBObj(const char* filename, GLuint *VBOid, GLuint *fac
 
 GLuint loadNewestBObj(const std::string &filename, GLuint *facecount) {
 
-	std::ifstream infile(filename, std::ios::binary | std::ios::in);
+	std::ifstream infile(filename.c_str(), std::ios::binary | std::ios::in);
 	
-	if (!infile.is_open()) { printf("loadNewestBObj: failed loading file %s\n", filename); return NULL; }
+	if (!infile.is_open()) { printf("loadNewestBObj: failed loading file %s\n", filename.c_str()); return NULL; }
 	
 	std::size_t filesize = cpp_getfilesize(infile);
 	char *buffer = new char[filesize];

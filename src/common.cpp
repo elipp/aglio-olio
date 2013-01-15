@@ -24,13 +24,10 @@ size_t cpp_getfilesize(std::ifstream& in)
 	return length;
 }
 
-
+/*
 char* decompress_qlz(std::ifstream &file, char** buffer)
 {
-	/*
-	 * By this stage, the std::ifstream must already be associated with a file.
-	 *
-	 */
+
 	
 	qlz_state_decompress *state = new qlz_state_decompress;
 	long infile_size = cpp_getfilesize(file);
@@ -48,10 +45,5 @@ char* decompress_qlz(std::ifstream &file, char** buffer)
 
 	return *buffer;
 
-}
+}*/
 
-void printVector4f(const Eigen::Vector4f &a) {
-
-	printf("(%f %f %f %f)\n", a(0), a(1), a(2), a(3));
-
-}
