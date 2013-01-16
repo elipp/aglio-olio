@@ -22,7 +22,7 @@ mat3 normal_matrix = transpose(inverse(mat3(ModelView)));
 
 void main(void)
 {
-	sfhsjh
+	
 	//gl_Position = Projection*ModelView*vec4(in_position.x+0.2*sin(in_position.y+3*running), in_position.y, in_position.z, 1.0); // 
 	float height_sample = length(texture2D(heightmap, vec2(in_texcoord.s, in_texcoord.t + 0.5)));
 	vec3 normal_normalized = normalize(in_normal);
