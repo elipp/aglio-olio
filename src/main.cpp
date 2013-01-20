@@ -13,9 +13,11 @@
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
+#include <GL/glx.h>
 #include <GL/glext.h>
 
-#include <GL/glfw.h>
+#include <X11/Xlib.h>	// for mouse cursor hiding
+#include <X11/cursorfont.h> // :D:D:
 
 #include "lin_alg.h"
 #include "common.h"
@@ -24,14 +26,32 @@
 #include "model.h"
 #include "texture.h"
 
-
-
 #define WINDOW_WIDTH 1440.0
 #define WINDOW_HEIGHT 960.0
 #define HALF_WINDOW_WIDTH WINDOW_WIDTH/2.0
 #define HALF_WINDOW_HEIGHT WINDOW_HEIGHT/2.0
 
+#define KEY_W 25
+#define KEY_A 38
+#define KEY_S 39
+#define KEY_D 40
+#define KEY_N 57
+#define KEY_P 33
+#define KEY_ESC 9
+
 using namespace std;
+
+Display                 *dpy;
+Window                  root;
+GLint                   att[] = { GLX_RGBA, GLX_DEPTH_SIZE, 24, GLX_DOUBLEBUFFER, None };
+XVisualInfo             *vi;
+Colormap                cmap;
+XSetWindowAttributes    swa;
+Window                  win;
+GLXContext              glc;
+XWindowAttributes       gwa;
+XEvent                  xev;
+
 
 bool active=true;
 bool fullscreen=false;
@@ -46,20 +66,20 @@ static struct mousePos {
 float c_vel_fwd = 0, c_vel_side = 0;
 
 GLuint  VBOid, 
-		IBOid,
-		facecount,
-		uni_running_loc,
-		uni_modelview_loc,
-		uni_projection_loc,
-		uni_sampler2d_loc,
-		uni_heightmap_loc,
-		uni_light_loc,
-		uni_lightsrc_loc,
-		frag_data_loc;
+	IBOid,
+	facecount,
+	uni_running_loc,
+	uni_modelview_loc,
+	uni_projection_loc,
+	uni_sampler2d_loc,
+	uni_heightmap_loc,
+	uni_light_loc,
+	uni_lightsrc_loc,
+	frag_data_loc;
 
 GLuint uni_NP_modelview_loc,
-	   uni_NP_projection_loc,
-	   uni_NP_heightmap_loc;
+       uni_NP_projection_loc,
+       uni_NP_heightmap_loc;
 
 static GLint earth_tex_id, hmap_id;
 
@@ -89,6 +109,20 @@ bool plot_normals = true;
 #define M_PI 3.1415926535
 #endif
 
+Pixmap bitmapNoData;
+Cursor invisibleCursor;
+Cursor visibleCursor;
+Cursor currentCursor;
+
+static void showCursor(int arg) {
+
+	if (arg) {
+		XDefineCursor(dpy, win, visibleCursor);
+	}
+	else {
+		XDefineCursor(dpy, win, invisibleCursor);
+	}
+}
 void rotatex(float mod) {
 	qy += 0.001*mod;
 	Quaternion xq = Quaternion::fromAxisAngle(1.0, 0.0, 0.0, qx);
@@ -112,80 +146,60 @@ void control()
 {
 	static const float fwd_modifier = 0.008;
 	static const float side_modifier = 0.005;
+	static const float mouse_modifier = 0.4;
+
+	static Window root, child;
+	static int rootX, rootY;
 
 	if(mouseLocked) {
-		glfwDisable(GLFW_MOUSE_CURSOR);
-		glfwGetMousePos(&cursorPos.x, &cursorPos.y);
-		glfwSetMousePos(HALF_WINDOW_WIDTH, HALF_WINDOW_HEIGHT);
+		unsigned int buttonmask;
+		XQueryPointer(dpy, win, &root, &child, &rootX, &rootY, &cursorPos.x, &cursorPos.y, &buttonmask);
 		float dx = (HALF_WINDOW_WIDTH - cursorPos.x);
 		float dy = -(HALF_WINDOW_HEIGHT - cursorPos.y);
 
-		if (keys['W'] == GLFW_PRESS) {
+		XWarpPointer(dpy, None, win, 0, 0, 0, 0, HALF_WINDOW_WIDTH, HALF_WINDOW_HEIGHT);
+		XSync(dpy, False);
+
+		if (keys[KEY_W]) {
 			c_vel_fwd += fwd_modifier;
 			//keys['W'] = FALSE;
 		} 
-		if (keys['S'] == GLFW_PRESS) {
+		if (keys[KEY_S]) {
 			c_vel_fwd -= fwd_modifier;
 			//keys['S'] = FALSE;
 		}
 		c_vel_fwd *= 0.97;
 
-		if (keys['A'] == GLFW_PRESS) {
+		if (keys[KEY_A]) {
 			c_vel_side -= side_modifier;
 			//keys['A'] = FALSE;
 		} 
-		if (keys['D'] == GLFW_PRESS) {
+		if (keys[KEY_D]) {
 			c_vel_side += side_modifier;
 			//keys['D'] = FALSE;
 		} 
 		c_vel_side *= 0.95;
 
 
-		if (keys['N'] == GLFW_PRESS) {
+		if (keys[KEY_N]) {
 			plot_normals = !plot_normals;
-			keys['N'] = false;
+			keys[KEY_N] = false;
 		}
 		static GLint PMODE = GL_FILL;
-		if (keys['P']) {
+		if (keys[KEY_P]) {
 			glPolygonMode(GL_FRONT_AND_BACK, (PMODE = (PMODE == GL_FILL ? GL_LINE : GL_FILL)));
-			keys['P'] = false;
+			keys[KEY_P] = false;
 		}
 		if (dy != 0) {
-			rotatey(dy);
+			rotatey(mouse_modifier*dy);
 		}
 		if (dx != 0) {
-			rotatex(dx);
+			rotatex(mouse_modifier*dx);
 		}
 
-	}
-	else {
-		glfwEnable(GLFW_MOUSE_CURSOR);
-	}
-	/*if (keys[VK_UP])
-	{
-		location(0) += movevel;
+
 	}
 
-
-	if (keys[VK_DOWN])
-	{
-		location(0) -= movevel;
-	}*/
-
-	/*if (keys[VK_LEFT])
-	{
-		cameraVel(2) -= movevel;
-	}
-	
-
-	if (keys[VK_RIGHT])
-	{
-		cameraVel(2) += movevel;
-	}*/
-	
-	//view_position.print();
-
-	//view_position += dt*cameraVel;
 }
 
 
@@ -211,26 +225,26 @@ static mat4 skyboxmat(MAT_IDENTITY);
 
 void drawSkybox() {
 
-	
+
 	skyboxmat = mat4::scale(vec4(10.0, 10.0, 10.0, 1.0));
 	mat4 modelview = view * skyboxmat;
-	
+
 	glUniformMatrix4fv(uni_modelview_loc, 1, GL_FALSE, (const GLfloat*) modelview.rawData());
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, 0);	// something appropriate
 	glUniform1i(uni_sampler2d_loc, 0);	// needs to be 0 explicitly :D
 	glUniform1i(uni_lightsrc_loc, 1);
-		
+
 	glUniformMatrix4fv(uni_projection_loc, 1, GL_FALSE, (const GLfloat *)projection.rawData());
-	
+
 	glUseProgram(regular_shader->getProgramHandle());	
 
 
 	glBindBuffer(GL_ARRAY_BUFFER, skybox_VBOid);
 	glUniformMatrix4fv(uni_modelview_loc, 1, GL_FALSE, (const GLfloat *)skyboxmat.rawData());
 	glDrawElements(GL_TRIANGLES, skybox_facecount*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
-	
+
 }
 
 inline double rand01() {
@@ -259,6 +273,34 @@ GLushort *generateIndices() {
 	return indices;
 }
 
+
+
+static int initCursor() {
+
+	XColor black;
+	static char noData[] = { 0,0,0,0,0,0,0,0 };
+	black.red = black.green = black.blue = 0;
+
+
+	visibleCursor=XCreateFontCursor(dpy, XC_left_ptr);
+
+	bitmapNoData = XCreateBitmapFromData(dpy, win, noData, 8, 8);
+	invisibleCursor = XCreatePixmapCursor(dpy, bitmapNoData, bitmapNoData,
+			&black, &black, 0, 0);
+	XDefineCursor(dpy, win, invisibleCursor);
+
+
+}
+static void restoreCursor() {
+	Cursor cursor;
+	XFreeCursor(dpy, invisibleCursor);
+	XFreePixmap(dpy, bitmapNoData);	// can perhaps be moved to initCursor
+	XUndefineCursor(dpy, win);
+
+	cursor=XCreateFontCursor(dpy, XC_left_ptr);
+	XDefineCursor(dpy, win, cursor);
+}
+
 int initGL(void)
 {
 	glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -278,17 +320,17 @@ int initGL(void)
 	normal_plot_shader = new ShaderProgram("shaders/normalplot.vs", "shaders/normalplot.gs", "shaders/normalplot.fs");
 	if (normal_plot_shader->is_bad()) { printf("Fatal: shader error (normalplot).\n"); return 0; }
 
-	printf("Loading models...");
+	fprintf(stderr, "Loading models...");
 	GLuint sphere_facecount;
 	GLuint sphere_VBOid = loadNewestBObj("models/maapallo_napa_korjattu.bobj", &sphere_facecount);
 	skybox_VBOid = loadNewestBObj("models/skybox.bobj", &skybox_facecount);
-	printf("done.\n");
+	fprintf(stderr, "done.\n");
 
-	printf("Loading textures...");
+	fprintf(stderr, "Loading textures...");
 	indices = generateIndices();
 	TextureBank::add(Texture("textures/EarthTexture.png", GL_LINEAR));
 	TextureBank::add(Texture("textures/earth_height_normal_map.png", GL_LINEAR));
-	printf("done.\n");
+	fprintf(stderr, "done.\n");
 
 	earth_tex_id = TextureBank::get_id_by_name("textures/EarthTexture.png");
 	hmap_id = TextureBank::get_id_by_name("textures/earth_height_normal_map.png");
@@ -314,7 +356,7 @@ int initGL(void)
 	//glBindFragDataLocation(programHandle, 0, "out_frag_color");
 
 	GLuint programHandle = regular_shader->getProgramHandle();
-	
+
 	glUseProgram(programHandle);
 
 	uni_running_loc = glGetUniformLocation(programHandle, "running"); // no need to assert this, most likely optimized away by GLSL
@@ -332,7 +374,7 @@ int initGL(void)
 	uni_NP_heightmap_loc =  glGetUniformLocation(NP_programHandle, "heightmap"); assert(uni_NP_modelview_loc != -1);
 
 	GLuint vPosition = glGetAttribLocation( programHandle, "in_position"); assert(vPosition != -1);
-    GLuint nPosition = glGetAttribLocation( programHandle, "in_normal"); assert(nPosition != -1);
+	GLuint nPosition = glGetAttribLocation( programHandle, "in_normal"); assert(nPosition != -1);
 	GLuint tPosition = glGetAttribLocation( programHandle, "in_texcoord"); assert(tPosition != -1);
 	GLuint fragloc = glGetFragDataLocation( programHandle, "out_frag_color"); assert(fragloc != -1);
 
@@ -352,14 +394,14 @@ int initGL(void)
 
 	view_position = vec4(0.0, 0.0, 0.0, 1.0);
 	cameraVel = vec4(0.0, 0.0, 0.0, 1.0);
-	
+
 	//view(3,2) = 3.0;	
 
 	//printMatrix4f(projection);
-		
+
 	//glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 	//wglSwapIntervalEXT(2); // prefer hardware-forced vsync over this
-	
+
 	models.push_back(Model(10000.0, 5.0, sphere_VBOid, earth_tex_id, sphere_facecount, true, true));
 	models.push_back(Model(50.0, 1.0, sphere_VBOid, earth_tex_id, sphere_facecount, false, false));
 	models.push_back(Model(15.23, 0.2, sphere_VBOid, earth_tex_id, sphere_facecount, false, false));
@@ -368,11 +410,11 @@ int initGL(void)
 	models.push_back(Model(15.0, 0.5, sphere_VBOid, earth_tex_id, sphere_facecount, false, false));
 
 	/*for (int i = 0; i < 15; ++i) {
-		Model m(5, 0.5, sphere_VBOid, textures[rand()%3+1].id(), sphere_facecount, false, false);
-		m.translate(randomvec4(-20, 20));
-		m.velocity = randomvec4(-80, 80.0);
-		models.push_back(m);
-	}*/
+	  Model m(5, 0.5, sphere_VBOid, textures[rand()%3+1].id(), sphere_facecount, false, false);
+	  m.translate(randomvec4(-20, 20));
+	  m.velocity = randomvec4(-80, 80.0);
+	  models.push_back(m);
+	  }*/
 
 
 	models[0].velocity = vec4(0, 0, 0, 0);
@@ -387,10 +429,10 @@ int initGL(void)
 	models[3].translate(models[1].position - vec4(3.2, 8.0, -1.0, 0.0));
 	models[3].velocity = -vec4(2.0, 0.0, -2.0, 0.0);
 
-	
+
 	models[3].translate(models[1].position - vec4(1.3, -3.0, 3.0, 0.0));
 	models[3].velocity = vec4(2.0, 0.0, -1.0, 0.0);
-	
+
 	models[4].translate(models[1].position - vec4(-3.0, -3.0, -3.0, 0.0));
 	models[4].velocity = -vec4(0.0, 1.0, 2.0, 0.0);
 
@@ -399,14 +441,14 @@ int initGL(void)
 
 
 	glBindBuffer(GL_ARRAY_BUFFER, sphere_VBOid);
-	
+
 	/* the glEnable/DisableVertexAttribArray calls are REDUNDANT, since these are the only attribute arrays around at this time. */
 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), BUFFER_OFFSET(0));
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), BUFFER_OFFSET(3*sizeof(float)));
 	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), BUFFER_OFFSET(6*sizeof(float)));
 
-	
+
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOid);
 	return 1;
 
@@ -415,7 +457,7 @@ int initGL(void)
 
 void calculateCollision(Model *a, Model *b) {
 
-	
+
 	//vec4 r = b->position - a->position;
 
 	float m1 = a->mass;
@@ -425,11 +467,11 @@ void calculateCollision(Model *a, Model *b) {
 	float v1x = (m1*a->velocity(0) - m2 * (a->velocity(0) - 2*b->velocity(0)))/combinedmass;
 	float v1y = (m1*a->velocity(1) - m2 * (a->velocity(1) - 2*b->velocity(1)))/combinedmass;
 	float v1z = (m1*a->velocity(2) - m2 * (a->velocity(2) - 2*b->velocity(2)))/combinedmass;
-	
+
 	float v2x = (m2*(2*a->velocity(0) - b->velocity(0)) + m2*b->velocity(0))/combinedmass;
 	float v2y = (m2*(2*a->velocity(1) - b->velocity(1)) + m2*b->velocity(1))/combinedmass;
 	float v2z = (m2*(2*a->velocity(2) - b->velocity(2)) + m2*b->velocity(2))/combinedmass;
-	
+
 	vec4(v1x, v1y, v1z, 0.0);
 
 	a->velocity = vec4(v1x, v1y, v1z, 0.0);
@@ -443,19 +485,19 @@ void calculateCollision(Model *a, Model *b) {
 
 void drawSpheres()
 {
-	
+
 	glUseProgram(regular_shader->getProgramHandle());	
-	
+
 	running += 0.015;
 	if (running > 1000000) { running = 0; }
-	
+
 	glUniform1f(uni_running_loc, running);
 
 	glUniformMatrix4fv(uni_projection_loc, 1, GL_FALSE, (const GLfloat *)projection.rawData());
-	
+
 	static const GLuint sphere_VBOid = models[0].getVBOid();
 	static const GLuint sphere_facecount = models[0].getFaceCount();
-	
+
 	/* glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOid);  // is still in full matafaking effizzect :D */
 	glBindBuffer(GL_ARRAY_BUFFER, sphere_VBOid);	 // BIND BUFFER FOR ALL MATAFAKING SPHERES.
 	static const float dt = 0.01;
@@ -485,12 +527,12 @@ void drawSpheres()
 
 			if (iter != current) {
 				vec4 r = (*iter).position - (*current).position;
-				
+
 				const float distance = r.length3();
 				//printf("distance: %f\n", distance);
 
 				if (fabs(distance) < (*iter).radius + (*current).radius) {
-				
+
 					if ((*current).velocity.length3() + (*iter).velocity.length3() < 0.5) {
 						//(*current).velocity.zero();
 					}
@@ -501,34 +543,34 @@ void drawSpheres()
 						//vec4 p2 = (*iter)->mass * (*iter)->velocity;
 
 						vec4 n_p1 = -(dot(p1, r)/(distance*distance))*r_unit;
-		//				vec4 n_p2 = (p2.dot(r)/(distance*distance))*r_unit;
+						//				vec4 n_p2 = (p2.dot(r)/(distance*distance))*r_unit;
 
 						// approximation; has its flaws 
-					//	(*current).velocity = (2*n_p1 + p1)/(*current).mass; ***
-	
-					//	printVector4f(p1 + p2);			
+						//	(*current).velocity = (2*n_p1 + p1)/(*current).mass; ***
+
+						//	printVector4f(p1 + p2);			
 						//printVector4f(n_p1 + n_p2);
 
-					
+
 						//vec4 p1 = (*current)->mass * (*current)->velocity;
 						//vec4 p2 = (*iter)->mass * (*iter)->velocity;
 
 						//printVector4f(p1 + p2);
 
 						//calculateCollision(*current, *iter);
-//
+						//
 						//p1 = (*current)->mass * (*current)->velocity;
 						//p2 = (*iter)->mass * (*iter)->velocity;
 
 						//printVector4f(p1 + p2);
 
 						// printVector4f(newVel);
-						 //(*current)->velocity = newVel;	 
+						//(*current)->velocity = newVel;	 
 						// (*current)->translate((*current)->velocity*0.001);
 						// (*iter)->velocity = -newVel;
 						// (*iter)->translate((*iter)->velocity*0.001);
 
-					
+
 					}
 				}
 
@@ -554,9 +596,9 @@ void drawSpheres()
 
 		//printMatrix4f(model_rotation);
 		mat4 modelview = view * (*current).model_matrix * model_rotation;
-	
+
 		glUniformMatrix4fv(uni_modelview_loc, 1, GL_FALSE, (const GLfloat*) modelview.rawData());
-	
+
 		vec4 light_pos(sin(running), cos(0.11*running), -5.0, 1.0);
 		if (!(*current).lightsrc()) {
 			vec4 light = (light_pos - (*current).position);
@@ -577,7 +619,7 @@ void drawSpheres()
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, hmap_id);	// heightmap
 		glUniform1i(uni_heightmap_loc, 1);
-		
+
 
 		glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
 	}
@@ -589,7 +631,7 @@ void drawSpheres()
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, hmap_id);
 		glUniform1i(uni_NP_heightmap_loc, 1);
-	
+
 		mat4 modelview = view * models[0].model_matrix * models[0].rotation.toRotationMatrix();
 		glUniformMatrix4fv(uni_NP_projection_loc, 1, GL_FALSE, (const GLfloat *)projection.rawData());
 		glUniformMatrix4fv(uni_NP_modelview_loc, 1, GL_FALSE, (const GLfloat*) modelview.rawData());
@@ -601,55 +643,105 @@ void drawSpheres()
 /* callbacks */
 
 void signal_handler(int sig) {
+
 	exit(sig);
+
 }
 
-void GLFWCALL key_callback(int key, int action) {
-	keys[key] = (action != 0);	// action == GLFW_PRESS (==1) or GLFW_RELEASE (==0)
+void cleanup() {
+
+	glXMakeCurrent(dpy, None, NULL);
+	glXDestroyContext(dpy, glc);
+	XDestroyWindow(dpy, win);
+	XCloseDisplay(dpy);
+
+	glDeleteBuffers(1, &VBOid);
+	glDeleteBuffers(1, &IBOid);
+	restoreCursor();
+
 }
+
+//void GLFWCALL key_callback(int key, int action) {
+//keys[key] = (action != 0);	// action == GLFW_PRESS (==1) or GLFW_RELEASE (==0)
+//}
 
 int createWindow() {
 
-	if (!glfwInit()) {
-			fprintf(stderr, "glfwInit failed.\n");
-			return 0;
+	dpy = XOpenDisplay(NULL);
+
+	if(dpy == NULL) {
+		printf("createWindow: cannot connect to X server\n");
+		exit(0);
 	}
 
-	//glfwOpenWindowHint(GLFW_FSAA_SAMPLES, 4); // 4x antialiasing
-	//glfwOpenWindowHint(GLFW_OPENGL_VERSION_MAJOR, 3); // We want OpenGL 3.3
-	//glfwOpenWindowHint(GLFW_OPENGL_VERSION_MINOR, 3);
-	//glfwOpenWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); //We don't want the old OpenGL
+	root = DefaultRootWindow(dpy);
 
-	// Open a window and create its OpenGL context
-	if( !glfwOpenWindow( WINDOW_WIDTH, WINDOW_HEIGHT, 0,0,0,0, 32,0, GLFW_WINDOW ) )
-	{
-	    fprintf( stderr, "Failed to open GLFW window\n" );
-	    glfwTerminate();
-	    return 0;
+	vi = glXChooseVisual(dpy, 0, att);
+
+	if(vi == NULL) {
+		printf("no appropriate visual found\n");
+		exit(0);
 	}
-	glfwSetWindowTitle( "lolz" );
+	else {
+		printf("visual %p selected\n", (void *)vi->visualid); /* %p creates hexadecimal output like in glxinfo */
+	}
+
+
+	cmap = XCreateColormap(dpy, root, vi->visual, AllocNone);
+
+	swa.colormap = cmap;
+	swa.event_mask = ExposureMask | KeyPressMask;
+
+	win = XCreateWindow(dpy, root, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, vi->depth, InputOutput, vi->visual, CWColormap | CWEventMask, &swa);
+
+	XSelectInput(dpy, win, ButtonPressMask|StructureNotifyMask|KeyPressMask|KeyReleaseMask);
+	XMapWindow(dpy, win);
+	XStoreName(dpy, win, "aglio-olio, biatch!");
+
+	glc = glXCreateContext(dpy, vi, NULL, GL_TRUE);
+	glXMakeCurrent(dpy, win, glc);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glXSwapBuffers(dpy, win);
 
 	// Initialize GLEW
 	//glewExperimental=true; // Needed in core profile
 	if (glewInit() != GLEW_OK) {
-	    fprintf(stderr, "Failed to initialize GLEW\n");
-	    return 0;
+		fprintf(stderr, "Failed to initialize GLEW\n");
+		return 0;
 	}
 
-	glfwSetKeyCallback(key_callback);
+	return 1;
+}
 
+
+inline int handle_event(XEvent ev) {
+	switch(ev.type){
+		case KeyPress:
+			if (ev.xkey.keycode == KEY_ESC) { 
+				mouseLocked = !mouseLocked;
+				showCursor((int)!mouseLocked);
+			}
+			keys[ev.xkey.keycode] = true;
+			break;
+		case KeyRelease:
+			keys[ev.xkey.keycode] = false;
+			break;
+		case ButtonPress:
+			break;
+	}
+	return 1;
 }
 
 int main(int argc, char* argv[]) {
 
 	if (!createWindow()) { fprintf(stderr, "couldn't create window.\n"); exit(1); }
 	if (!initGL()) { fprintf(stderr, "Failed to initialized OpenGL.\n"); exit(1); }
-
+	if (!initCursor()) { fprintf(stderr, "Cursor initialization failed.\n"); exit(1); }
 
 	signal(SIGINT, signal_handler);
 
 	int c;
-	
+
 	bool esc = false;
 
 	std::string cpustr(checkCPUCapabilities());
@@ -657,26 +749,25 @@ int main(int argc, char* argv[]) {
 
 	bool done=false;
 
+	_timer timer;
+
 	while(!done)
 	{
+		while(XPending(dpy)) {
+			XNextEvent(dpy, &xev);
+			if (!handle_event(xev)) {
+				done = true;
+			}
+		}
 
 		control();
 		update_c_pos();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		drawSpheres();
-		if (glfwGetKey(GLFW_KEY_ESC) == GLFW_PRESS) { if (!keys[GLFW_KEY_ESC]) { mouseLocked = !mouseLocked; keys[GLFW_KEY_ESC] = true; }  else { keys[GLFW_KEY_ESC] = false; } }
-		glfwSwapBuffers();
-
-		done = !glfwGetWindowParam(GLFW_OPENED);
-		//	drawSkybox();
-
-
+		glXSwapBuffers(dpy, win); 
 	}
 
-	glfwTerminate();
-	glDeleteBuffers(1, &VBOid);
-	glDeleteBuffers(1, &IBOid);
-
+	cleanup();
 
 	return 0;
 
