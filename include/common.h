@@ -7,7 +7,8 @@
 #include <cstring>
 #include <iostream>
 #include <sys/time.h>
-#include <GL/GL.h>
+#include <GL/glew.h>
+#include <GL/gl.h>
 
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
 
@@ -44,18 +45,17 @@ public:
 		return (end.tv_sec*1000000000 + end.tv_nsec) - (beg.tv_sec*1000000000 + beg.tv_nsec);
 	}
 	time_t get_us() {
-		clock_gettime(CLOCK_REALTIME, &end);
-		return ((end.tv_sec*1000000000 + end.tv_nsec) - (beg.tv_sec*1000000000 + beg.tv_nsec))/1000;
+		return get_ns()/1000;
 	}
 	time_t get_ms() {
-		clock_gettime(CLOCK_REALTIME, &end);
-		return ((end.tv_sec*1000000000 + end.tv_nsec) - (beg.tv_sec*1000000000 + beg.tv_nsec))/1000000;
+		return get_ns()/1000000;
 	}
 	double get_s() {
-		return ((double)(end.tv_sec*1000000000 + end.tv_nsec) - (double)(beg.tv_sec*1000000000 + beg.tv_nsec))/1000000000.0;
+		return (double)get_ns()/1000000000.0;
 
 	}
-	_timer() { memset(&beg, 0, sizeof(struct timespec)); memset(&end, 0, sizeof(struct timespec)); }
+	_timer() { memset(&beg, 0, sizeof(struct timespec)); 
+		   memset(&end, 0, sizeof(struct timespec)); }
 
 };
 

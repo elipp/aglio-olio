@@ -3,14 +3,19 @@
 #include "shader.h"
 
 /*class ShaderProgram {
-	GLuint programHandle;
-public:
-	GLuint getProgramHandle() const { return programHandle; }
-	ShaderProgram(const std::string &vs_filename, const std::string &gs_filename, const std::string &fs_filename);	// supply string "none" if no gs is to be  used
-	static char* readShaderFromFile(const std::string &filename);
-	GLint checkShader(GLuint *shaderId, GLint QUERY); */
+  GLuint programHandle;
+  public:
+  GLuint getProgramHandle() const { return programHandle; }
+  ShaderProgram(const std::string &vs_filename, const std::string &gs_filename, const std::string &fs_filename);	// supply string "none" if no gs is to be  used
+  static char* readShaderFromFile(const std::string &filename);
+  GLint checkShader(GLuint *shaderId, GLint QUERY); */
 
-ShaderProgram::ShaderProgram(const std::string &vs_filename, const std::string &gs_filename, const std::string &fs_filename) {
+ShaderProgram::ShaderProgram(const std::string &id, const std::string &vs_filename, const std::string &gs_filename, const std::string &fs_filename) {
+
+	id_string = id;
+	shader_filenames[VertexShader] = vs_filename;
+	shader_filenames[GeometryShader] = gs_filename;
+	shader_filenames[FragmentShader] = fs_filename;
 
 	size_t vlen, glen, flen;
 	char *vs_buf = NULL, *gs_buf = NULL, *fs_buf = NULL;
@@ -24,7 +29,7 @@ ShaderProgram::ShaderProgram(const std::string &vs_filename, const std::string &
 	else {
 		shaderObjIDs[GeometryShader] = SHADER_NONE;
 	}
-	
+
 	fs_buf = ShaderProgram::readShaderFromFile(fs_filename, &flen);
 	if (!fs_buf) { bad = true; return; }
 
@@ -36,14 +41,12 @@ ShaderProgram::ShaderProgram(const std::string &vs_filename, const std::string &
 	}
 	shaderObjIDs[FragmentShader] = glCreateShader(GL_FRAGMENT_SHADER);	
 
-
-	
 	glShaderSource(shaderObjIDs[VertexShader], 1, (const GLchar**)&vs_buf,  (const GLint*)&vlen);
 	if (shaderObjIDs[GeometryShader] != SHADER_NONE) {
 		glShaderSource(shaderObjIDs[GeometryShader], 1, (const GLchar**)&gs_buf, (const GLint*)&glen);
 	}
 	glShaderSource(shaderObjIDs[FragmentShader], 1, (const GLchar**)&fs_buf, (const GLint*)&flen);
-	
+
 	delete [] vs_buf;
 	if (gs_buf) { delete [] gs_buf; }
 	delete [] fs_buf;
@@ -56,14 +59,14 @@ ShaderProgram::ShaderProgram(const std::string &vs_filename, const std::string &
 
 	programHandle = glCreateProgram();              
 
-	
+
 	glAttachShader(programHandle, shaderObjIDs[VertexShader]);
 	if (shaderObjIDs[GeometryShader] != SHADER_NONE) {
 		glAttachShader(programHandle, shaderObjIDs[GeometryShader]);
 	}
 	glAttachShader(programHandle, shaderObjIDs[FragmentShader]);
 
-	
+
 	glBindAttribLocation(programHandle, 0, "in_position");
 	glBindAttribLocation(programHandle, 1, "in_normal");
 	glBindAttribLocation(programHandle, 2, "in_texcoord");
@@ -91,54 +94,53 @@ char* ShaderProgram::readShaderFromFile(const std::string &filename, size_t *fil
 	char *buf = new char[length+1];
 	in.read(buf, length);
 	in.close();
-	
+
 	buf[length] = '\0';
-	
+
 	return buf;
 }
 
-GLint ShaderProgram::checkShaders(GLint QUERY) // QUERY = usually GL_COMPILE_STATUS
+GLint ShaderProgram::checkShaders(GLint QUERY) // QUERY = usually GL_COMPILE_STATUS, should check GL_LINK_STATUS as well (glGetProgramInfoLog for linker)
 {	
-	GLint succeeded[3] = { 1 };
+	GLint succeeded[3] = { SHADER_SUCCESS };
 	GLchar *log_buffers[3] = { NULL };
 	GLint has_errors = 0;
 
 	for (int i = 0; i < 3; i++) {
-		if (shaderObjIDs[i] == SHADER_NONE) { continue; }
+		if (shaderObjIDs[i] != SHADER_NONE) {
+			glGetShaderiv(shaderObjIDs[i], QUERY, &succeeded[i]);
 
-		glGetShaderiv(shaderObjIDs[i], QUERY, &succeeded[i]);
+			if (!succeeded[i])
+			{	
+				GLint log_length = 0;
+				has_errors = 1;
+				glGetShaderiv(shaderObjIDs[i], GL_INFO_LOG_LENGTH, &log_length);
+				log_buffers[i] = new GLchar[log_length + 1];
+				memset(log_buffers[i], 0, log_length);
 
-		if (!succeeded[i])
-		{	
-			GLint log_length = 0;
-			has_errors = 1;
-			glGetShaderiv(shaderObjIDs[i], GL_INFO_LOG_LENGTH, &log_length);
-			log_buffers[i] = new GLchar[log_length + 1];
-			memset(log_buffers[i], 0, log_length);
-			
-			glGetShaderInfoLog(shaderObjIDs[i], log_length, NULL, log_buffers[i]);
-	
-			log_buffers[i][log_length-1] = '\0';
-		
-			std::ofstream logfile("shader.log", std::ios::out | std::ios::app);	
-			logfile << log_buffers[i];
-			logfile.close();
+				glGetShaderInfoLog(shaderObjIDs[i], log_length, NULL, log_buffers[i]);
 
-			// also print to MSVC output window
-		
+				log_buffers[i][log_length-1] = '\0';
+
+				std::ofstream logfile("shader.log", std::ios::out | std::ios::app);	
+				logfile << log_buffers[i];
+				logfile.close();
+
+				// also print to Visual Studio output window
+			}
 		}
 	}
 
 	if (has_errors) {	
-		std::cerr << "\nSHADER ERROR OUTPUT:\n-----------------------------------------------------------------";
+
+		fprintf(stderr, "\nShader %s: error log (glGetShaderInfoLog):\n-----------------------------------------------------------------\n\n", id_string.c_str());
 		for (int i = 0; i < 3; i++) {
-			if (!succeeded[i]) {
-				std::cerr << "\n\n";
-				std::cerr << log_buffers[i];
-				std::cerr << "\n\n";
+			if (succeeded[i] != SHADER_SUCCESS) {
+				fprintf(stderr, "filename: \033[1m %s\033[0m\n\n", shader_filenames[i].c_str());
+				fprintf(stderr, "%s\n\n", log_buffers[i]);
 			}
 		}
-		std::cerr << "\n---------------------------------------------------\n\n";
+		std::cerr << "\n---------------------------------------------------\n";
 	}
 	for (int i = 0; i < 3; i++) {	
 		delete [] log_buffers[i];
@@ -149,11 +151,11 @@ GLint ShaderProgram::checkShaders(GLint QUERY) // QUERY = usually GL_COMPILE_STA
 
 
 /*	std::ofstream logfile("shader.log", std::ios::out | std::ios::app);
-	
+
 	logfile << "compilation of GLSL shader source file "<< filename << " failed. Contents: \n\n";
 
 	logfile.write(buf, length);
 	logfile.put('\n');
 	logfile.put('\n');
 	logfile.close();
-*/
+ */

@@ -20,7 +20,7 @@ void main(void)
 	vec4 normal_map_sample = texture2D(heightmap, in_texcoord);
 	vec3 normal_adjusted = normalize(in_normal + normal_map_sample.xyz);
 	vec3 normal_normalized = normalize(in_normal);
-	gl_Position = (vec4(in_position, 1.0) + 0.25*vec4(normal_normalized, 0.0)*height_sample);
+	gl_Position = vec4(in_position + normal_normalized*height_sample, 1.0);
 	//vnormal = (ModelView*vec4(in_normal, 0.0)).xyz;
 	vnormal=normal_matrix*(in_normal + normal_adjusted);
 	//vnormal = vec4(in_normal,1.0);

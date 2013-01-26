@@ -31,7 +31,7 @@ void main(void)
 
 	if (height_sample > 0) { height_sample = 0.05+pow(height_sample, 1.2); }
 	else { height_sample = 0; }
-	gl_Position = Projection*ModelView*(pos + vec4(normal_normalized, 1.0)*height_sample);	// consider w = 0.0
+	gl_Position = Projection*ModelView*vec4(pos + normal_normalized*height_sample, 1.0);
 	vnormal = normal_matrix*in_normal;
 	vtexcoord = in_texcoord;
 }

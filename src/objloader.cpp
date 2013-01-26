@@ -11,7 +11,6 @@
 #include "vertex.h"
 #include "objloader.h"
 #include "common.h"
-#include "quicklz.h"		// for loadBObj
 
 
 using namespace std;

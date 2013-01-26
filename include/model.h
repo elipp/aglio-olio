@@ -1,10 +1,8 @@
 #ifndef MODEL_H
 #define MODEL_H
 
-#include <GL/gl.h>
-
-#include "lin_alg.h"
 #include "common.h"
+#include "lin_alg.h"
 #include <cstdlib>
 
 #define ALIGNMENT 16

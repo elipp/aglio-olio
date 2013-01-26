@@ -1,31 +1,51 @@
 #include "text.h"
 
-static inline GLuint texcoord_index_from_char(char c){ return c == '\0' ? sizeof(glyph_texcoords)/8 + 1 : (GLuint)c - 0x20; }
+#define BLANK_GLYPH (sizeof(glyph_texcoords)/(8*sizeof(float)) - 1)
 
-static glyph glyph_from_char(float x, float y, char c) { 
+static inline GLuint texcoord_index_from_char(char c){ return c == '\0' ? BLANK_GLYPH : (GLuint)c - 0x20; }
+
+static inline glyph glyph_from_char(float x, float y, char c) { 
 	glyph g;
 	
-	/*
-	glyphs[i].vertices[j].x = x + a +((j>>1)&1)*6.0;
-	glyphs[i].vertices[j].y = y + (((j+1)>>1)&1)*12.0;
-	glyphs[i].vertices[j].u = glyph_texcoords[texcoord_index_from_char(text[i])][2*j];
-	glyphs[i].vertices[j].v = glyph_texcoords[texcoord_index_from_char(text[i])][2*j+1]; */
 	int j = 0;
 	const GLuint tindex = texcoord_index_from_char(c);
-	g.vertices[0].pos = vec2(x + ((j>>1)&1)*6.0, y + (((j+1)>>1)&1)*12.0);
-	g.vertices[0].texc = vec2(glyph_texcoords[tindex][2*j], glyph_texcoords[tindex][2*j+1]);
+
+/*	g.vertices[0].pos = vec2(x + ((j>>1)&1)*6.0, y + (((j+1)>>1)&1)*12.0);
+	g.vertices[0].texc = vec2(glyph_texcoords[tindex][2*j], glyph_texcoords[tindex][2*j+1]); */
 	
+	g.vertices[0] = vertex2(x + ((j>>1)&1)*6.0, 
+			  	y + (((j+1)>>1)&1)*12.0,
+			  	glyph_texcoords[tindex][2*j], 
+			  	glyph_texcoords[tindex][2*j+1]);
+	
+/*	g.vertices[1].pos = vec2(x + ((j>>1)&1)*6.0, y + (((j+1)>>1)&1)*12.0);
+	g.vertices[1].texc = vec2(glyph_texcoords[tindex][2*j], glyph_texcoords[tindex][2*j+1]); */
+
+
 	j = 1;
-	g.vertices[1].pos = vec2(x + ((j>>1)&1)*6.0, y + (((j+1)>>1)&1)*12.0);
-	g.vertices[1].texc = vec2(glyph_texcoords[tindex][2*j], glyph_texcoords[tindex][2*j+1]);
+	g.vertices[1] = vertex2(x + ((j>>1)&1)*6.0, 
+			  	y + (((j+1)>>1)&1)*12.0,
+			  	glyph_texcoords[tindex][2*j], 
+			  	glyph_texcoords[tindex][2*j+1]);
+/*
+	g.vertices[2].pos = vec2(x + ((j>>1)&1)*6.0, y + (((j+1)>>1)&1)*12.0);
+	g.vertices[2].texc = vec2(glyph_texcoords[tindex][2*j], glyph_texcoords[tindex][2*j+1]); */
+
 
 	j = 2;
-	g.vertices[2].pos = vec2(x + ((j>>1)&1)*6.0, y + (((j+1)>>1)&1)*12.0);
-	g.vertices[2].texc = vec2(glyph_texcoords[tindex][2*j], glyph_texcoords[tindex][2*j+1]);
+	g.vertices[2] = vertex2(x + ((j>>1)&1)*6.0, 
+			  	y + (((j+1)>>1)&1)*12.0,
+			  	glyph_texcoords[tindex][2*j], 
+			  	glyph_texcoords[tindex][2*j+1]);
+
+/*	g.vertices[3].pos = vec2(x + ((j>>1)&1)*6.0, y + (((j+1)>>1)&1)*12.0);
+	g.vertices[3].texc = vec2(glyph_texcoords[tindex][2*j], glyph_texcoords[tindex][2*j+1]); */
 
 	j = 3;
-	g.vertices[3].pos = vec2(x + ((j>>1)&1)*6.0, y + (((j+1)>>1)&1)*12.0);
-	g.vertices[3].texc = vec2(glyph_texcoords[tindex][2*j], glyph_texcoords[tindex][2*j+1]);
+	g.vertices[3] = vertex2(x + ((j>>1)&1)*6.0, 
+				y + (((j+1)>>1)&1)*12.0,
+			  	glyph_texcoords[tindex][2*j], 
+				glyph_texcoords[tindex][2*j+1]);
 
 	return g;
 
@@ -137,6 +157,8 @@ void wpstring_holder::append(const wpstring& str, GLuint static_mask) {
 
 
 void wpstring_holder::createBufferObjects() {
+
+	fprintf(stderr, "sizeof(glyph_texcoords): %lu\n", sizeof(glyph_texcoords)/(8*sizeof(float)));
 
 	GLushort *common_text_indices = generateCommonTextIndices();
 

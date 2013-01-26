@@ -25,6 +25,7 @@
 #include "shader.h"
 #include "model.h"
 #include "texture.h"
+#include "text.h"
 
 #define WINDOW_WIDTH 1440.0
 #define WINDOW_HEIGHT 960.0
@@ -39,7 +40,12 @@
 #define KEY_P 33
 #define KEY_ESC 9
 
-using namespace std;
+namespace Text {
+	mat4 Projection;
+	mat4 ModelView(MAT_IDENTITY);
+	GLuint uni_projection_loc, uni_modelview_loc, uni_texture1_loc;
+	GLuint texId;
+}
 
 Display                 *dpy;
 Window                  root;
@@ -52,6 +58,8 @@ GLXContext              glc;
 XWindowAttributes       gwa;
 XEvent                  xev;
 
+
+static GLint PMODE = GL_FILL;
 
 bool active=true;
 bool fullscreen=false;
@@ -89,6 +97,7 @@ GLfloat running = 0.0;
 
 static ShaderProgram *regular_shader;
 static ShaderProgram *normal_plot_shader;
+static ShaderProgram *text_shader;
 
 static const float dt = 0.01;
 
@@ -185,9 +194,9 @@ void control()
 			plot_normals = !plot_normals;
 			keys[KEY_N] = false;
 		}
-		static GLint PMODE = GL_FILL;
+
 		if (keys[KEY_P]) {
-			glPolygonMode(GL_FRONT_AND_BACK, (PMODE = (PMODE == GL_FILL ? GL_LINE : GL_FILL)));
+			PMODE = (PMODE == GL_FILL ? GL_LINE : GL_FILL);
 			keys[KEY_P] = false;
 		}
 		if (dy != 0) {
@@ -273,6 +282,79 @@ GLushort *generateIndices() {
 	return indices;
 }
 
+void initializeStrings() {
+
+	// NOTE: it wouldn't be such a bad idea to just take in a vector 
+	// of strings, and to generate one single static VBO for them all.
+
+	std::string string1 = "aglio-olio :D:DD: (biatch)";
+	wpstring_holder::append(wpstring(string1, 15, 15), WPS_STATIC);
+
+	std::string frames("Frames per second: ");
+	wpstring_holder::append(wpstring(frames, WINDOW_WIDTH-180, WINDOW_HEIGHT-20), WPS_STATIC);
+
+	// reserved index 2 for FPS display.
+	std::string initialfps = "00.00";
+	wpstring_holder::append(wpstring(initialfps, WINDOW_WIDTH-50, WINDOW_HEIGHT-20), WPS_DYNAMIC);
+	
+	const std::string help2("'p' for polygonmode toggle.");
+	wpstring_holder::append(wpstring(help2, WINDOW_WIDTH-220, 35), WPS_STATIC);
+
+	const std::string help4("'n' for normal plot toggle.");
+	wpstring_holder::append(wpstring(help4, WINDOW_WIDTH-220, 50), WPS_STATIC);
+
+	const std::string help5("'ESC' to lock/unlock mouse.");
+	wpstring_holder::append(wpstring(help5, WINDOW_WIDTH-220, 65), WPS_STATIC);
+
+	wpstring_holder::createBufferObjects();
+
+}
+
+void drawText() {
+	
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+	glBindBuffer(GL_ARRAY_BUFFER, wpstring_holder::get_static_VBOid());
+
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(0));
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(2*sizeof(float)));
+	
+	glUseProgram(text_shader->getProgramHandle());
+	glUniform1i(Text::uni_texture1_loc, 0);
+	
+	glUniformMatrix4fv(Text::uni_projection_loc, 1, GL_FALSE, (const GLfloat*)Text::Projection.rawData());
+	glUniformMatrix4fv(Text::uni_modelview_loc, 1, GL_FALSE, (const GLfloat*)Text::ModelView.rawData());
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, wpstring_holder::get_IBOid());
+	
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, Text::texId);
+
+	glDrawElements(GL_TRIANGLES, 6*wpstring_holder::get_static_strings_total_length(), GL_UNSIGNED_SHORT, NULL);
+		
+	glBindBuffer(GL_ARRAY_BUFFER, wpstring_holder::get_dynamic_VBOid());
+	// not sure if needed or not
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(0));
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(2*sizeof(float)));
+
+	glUseProgram(text_shader->getProgramHandle());
+	glUniform1i(Text::uni_texture1_loc, 0);
+	
+	glUniformMatrix4fv(Text::uni_projection_loc, 1, GL_FALSE, (const GLfloat*)Text::Projection.rawData());
+	glUniformMatrix4fv(Text::uni_modelview_loc, 1, GL_FALSE, (const GLfloat*)Text::ModelView.rawData());
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, wpstring_holder::get_IBOid());
+	
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, Text::texId);
+
+	glDrawElements(GL_TRIANGLES, 6*wpstring_holder::getDynamicStringCount()*wpstring_max_length, GL_UNSIGNED_SHORT, NULL);
+
+	glUseProgram(0);
+
+}
+
+
 
 
 static int initCursor() {
@@ -314,11 +396,11 @@ int initGL(void)
 		fprintf(stderr, "Error: %s\n", glewGetErrorString(err));
 	}
 
-	regular_shader = new ShaderProgram("shaders/regular.vs", "none", "shaders/regular.fs");
-	if (regular_shader->is_bad()) { printf("Fatal: shader error (regular).\n"); return 0; }
+	regular_shader = new ShaderProgram("regular_shader", "shaders/regular.vs", "none", "shaders/regular.fs");
+	normal_plot_shader = new ShaderProgram("normal_plot_shader", "shaders/normalplot.vs", "shaders/normalplot.gs", "shaders/normalplot.fs");
+	text_shader = new ShaderProgram("text_shader", "shaders/text_shader.vs", "none", "shaders/text_shader.fs");
 
-	normal_plot_shader = new ShaderProgram("shaders/normalplot.vs", "shaders/normalplot.gs", "shaders/normalplot.fs");
-	if (normal_plot_shader->is_bad()) { printf("Fatal: shader error (normalplot).\n"); return 0; }
+	if (regular_shader->is_bad() || normal_plot_shader->is_bad() || text_shader->is_bad()) { return 0; }
 
 	fprintf(stderr, "Loading models...");
 	GLuint sphere_facecount;
@@ -330,10 +412,12 @@ int initGL(void)
 	indices = generateIndices();
 	TextureBank::add(Texture("textures/EarthTexture.png", GL_LINEAR));
 	TextureBank::add(Texture("textures/earth_height_normal_map.png", GL_LINEAR));
+	TextureBank::add(Texture("textures/dina_all.png", GL_NEAREST));
 	fprintf(stderr, "done.\n");
 
 	earth_tex_id = TextureBank::get_id_by_name("textures/EarthTexture.png");
 	hmap_id = TextureBank::get_id_by_name("textures/earth_height_normal_map.png");
+	Text::texId = TextureBank::get_id_by_name("textures/dina_all.png");
 
 	if (!TextureBank::validate())
 		return false;
@@ -354,6 +438,7 @@ int initGL(void)
 
 
 	//glBindFragDataLocation(programHandle, 0, "out_frag_color");
+
 
 	GLuint programHandle = regular_shader->getProgramHandle();
 
@@ -378,8 +463,12 @@ int initGL(void)
 	GLuint tPosition = glGetAttribLocation( programHandle, "in_texcoord"); assert(tPosition != -1);
 	GLuint fragloc = glGetFragDataLocation( programHandle, "out_frag_color"); assert(fragloc != -1);
 
-	printf("\n\n%d, %d, %d, %d, %d\n\n", vPosition, nPosition, tPosition, fragloc, uni_light_loc);
+	GLuint text_programHandle = text_shader->getProgramHandle();
+	glUseProgram(NP_programHandle);
 
+	Text::uni_modelview_loc = glGetUniformLocation( text_programHandle, "ModelView" ); assert(Text::uni_modelview_loc != -1);
+	Text::uni_projection_loc = glGetUniformLocation( text_programHandle, "Projection" ); assert(Text::uni_projection_loc != -1);
+	Text::uni_texture1_loc = glGetUniformLocation( text_programHandle, "texture1" ); assert(Text::uni_texture1_loc != -1);
 
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
@@ -391,6 +480,9 @@ int initGL(void)
 	view.identity();
 
 	projection.make_proj_perspective(M_PI/8.0, (float)WINDOW_WIDTH/(float)WINDOW_HEIGHT, 2.0, 1000.0);
+
+	Text::Projection.make_proj_orthographic(0.0, WINDOW_WIDTH, WINDOW_HEIGHT, 0.0, -1.0, 1.0);
+	Text::ModelView.identity();
 
 	view_position = vec4(0.0, 0.0, 0.0, 1.0);
 	cameraVel = vec4(0.0, 0.0, 0.0, 1.0);
@@ -486,6 +578,7 @@ void calculateCollision(Model *a, Model *b) {
 void drawSpheres()
 {
 
+	glPolygonMode(GL_FRONT_AND_BACK, PMODE);
 	glUseProgram(regular_shader->getProgramHandle());	
 
 	running += 0.015;
@@ -498,9 +591,14 @@ void drawSpheres()
 	static const GLuint sphere_VBOid = models[0].getVBOid();
 	static const GLuint sphere_facecount = models[0].getFaceCount();
 
-	/* glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOid);  // is still in full matafaking effizzect :D */
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOid);  // is still in full matafaking effizzect :D */
 	glBindBuffer(GL_ARRAY_BUFFER, sphere_VBOid);	 // BIND BUFFER FOR ALL MATAFAKING SPHERES.
 	static const float dt = 0.01;
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), BUFFER_OFFSET(0));
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), BUFFER_OFFSET(3*sizeof(float)));
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), BUFFER_OFFSET(6*sizeof(float)));
+
 
 	//models[0].rotation = Quaternion::fromAxisAngle(0.0, 0.0, 1.0, 90);
 	//models[0].rotation *= Quaternion::fromAxisAngle(0.0, 1.0, 0.0, running);
@@ -620,7 +718,6 @@ void drawSpheres()
 		glBindTexture(GL_TEXTURE_2D, hmap_id);	// heightmap
 		glUniform1i(uni_heightmap_loc, 1);
 
-
 		glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
 	}
 
@@ -683,7 +780,7 @@ int createWindow() {
 		exit(0);
 	}
 	else {
-		printf("visual %p selected\n", (void *)vi->visualid); /* %p creates hexadecimal output like in glxinfo */
+		printf("glXChooseVisual: visual %p selected\n", (void *)vi->visualid); /* %p creates hexadecimal output like in glxinfo */
 	}
 
 
@@ -748,6 +845,7 @@ int main(int argc, char* argv[]) {
 	if (cpustr != "OK") { fprintf(stderr, "cpuid error (\"%s\")\n", cpustr.c_str()); return 1; }
 
 	bool done=false;
+	initializeStrings();
 
 	_timer timer;
 
@@ -764,7 +862,21 @@ int main(int argc, char* argv[]) {
 		update_c_pos();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		drawSpheres();
+
+		long us = timer.get_us();
+		double fps = 1000000/us;
+		static char buffer[8];
+		sprintf(buffer, "%4.2f", fps);
+		buffer[6] = '\0';
+		std::string fps_str(buffer);
+
+		wpstring_holder::updateDynamicString(0, fps_str);
+
+		drawText();
+
 		glXSwapBuffers(dpy, win); 
+		timer.begin();
+
 	}
 
 	cleanup();
