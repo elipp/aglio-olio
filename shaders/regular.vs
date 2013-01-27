@@ -27,11 +27,10 @@ void main(void)
 	float height_sample = length(texture2D(heightmap, vec2(in_texcoord.s, in_texcoord.t + 0.5)));
 	vec3 normal_normalized = normalize(in_normal);
 	vec4 texColor = texture2D(texture_color, in_texcoord);
-	vec4 pos = vec4(in_position, 1.0);
 
 	if (height_sample > 0) { height_sample = 0.05+pow(height_sample, 1.2); }
 	else { height_sample = 0; }
-	gl_Position = Projection*ModelView*vec4(pos + normal_normalized*height_sample, 1.0);
+	gl_Position = Projection*ModelView*vec4(in_position + normal_normalized*height_sample, 1.0);
 	vnormal = normal_matrix*in_normal;
 	vtexcoord = in_texcoord;
 }
