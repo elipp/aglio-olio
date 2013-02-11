@@ -2,7 +2,6 @@
 
 //in vec2 vpos;
 in vec2 vtexcoord;
-
 uniform sampler2D texture1;
 
 layout(location = 0) out vec4 out_fragcolor;

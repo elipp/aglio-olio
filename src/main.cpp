@@ -396,9 +396,9 @@ int initGL(void)
 		fprintf(stderr, "Error: %s\n", glewGetErrorString(err));
 	}
 
-	regular_shader = new ShaderProgram("regular_shader", "shaders/regular.vs", "none", "shaders/regular.fs");
-	normal_plot_shader = new ShaderProgram("normal_plot_shader", "shaders/normalplot.vs", "shaders/normalplot.gs", "shaders/normalplot.fs");
-	text_shader = new ShaderProgram("text_shader", "shaders/text_shader.vs", "none", "shaders/text_shader.fs");
+	regular_shader = new ShaderProgram("shaders/regular"); 
+	normal_plot_shader = new ShaderProgram("shaders/normalplot");
+	text_shader = new ShaderProgram("shaders/text_shader");
 
 	if (regular_shader->is_bad() || normal_plot_shader->is_bad() || text_shader->is_bad()) { return 0; }
 
@@ -458,9 +458,9 @@ int initGL(void)
 	uni_NP_projection_loc =  glGetUniformLocation(NP_programHandle, "Projection"); assert(uni_NP_modelview_loc != -1);
 	uni_NP_heightmap_loc =  glGetUniformLocation(NP_programHandle, "heightmap"); assert(uni_NP_modelview_loc != -1);
 
-	GLuint vPosition = glGetAttribLocation( programHandle, "in_position"); assert(vPosition != -1);
-	GLuint nPosition = glGetAttribLocation( programHandle, "in_normal"); assert(nPosition != -1);
-	GLuint tPosition = glGetAttribLocation( programHandle, "in_texcoord"); assert(tPosition != -1);
+	GLuint vPosition = glGetAttribLocation( programHandle, "Position_VS_in"); assert(vPosition != -1);
+	GLuint nPosition = glGetAttribLocation( programHandle, "Normal_VS_in"); assert(nPosition != -1);
+	GLuint tPosition = glGetAttribLocation( programHandle, "TexCoord_VS_in"); assert(tPosition != -1);
 	GLuint fragloc = glGetFragDataLocation( programHandle, "out_frag_color"); assert(fragloc != -1);
 
 	GLuint text_programHandle = text_shader->getProgramHandle();

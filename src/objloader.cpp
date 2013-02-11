@@ -6,8 +6,6 @@
 #include <cstring>
 #include <cstdlib>
 
-#include "char_container.h"
-#include "vector.h"
 #include "vertex.h"
 #include "objloader.h"
 #include "common.h"
