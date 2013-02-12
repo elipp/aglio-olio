@@ -38,6 +38,11 @@
 #define KEY_D 40
 #define KEY_N 57
 #define KEY_P 33
+#define KEY_F 41
+#define KEY_G 42
+#define KEY_V 55
+#define KEY_B 56
+
 #define KEY_ESC 9
 
 namespace Text {
@@ -83,11 +88,16 @@ GLuint  VBOid,
 	uni_heightmap_loc,
 	uni_light_loc,
 	uni_lightsrc_loc,
-	frag_data_loc;
+	frag_data_loc,
+	uni_tess_inner_loc,
+	uni_tess_outer_loc;
 
 GLuint uni_NP_modelview_loc,
        uni_NP_projection_loc,
        uni_NP_heightmap_loc;
+
+GLfloat tess_level_inner = 1.0;
+GLfloat tess_level_outer = 1.0;
 
 static GLint earth_tex_id, hmap_id;
 
@@ -198,6 +208,22 @@ void control()
 		if (keys[KEY_P]) {
 			PMODE = (PMODE == GL_FILL ? GL_LINE : GL_FILL);
 			keys[KEY_P] = false;
+		}
+		if (keys[KEY_F]) {
+			if (tess_level_inner > 1.0) { tess_level_inner *= 0.5; }
+			keys[KEY_F] = false;
+		}
+		if (keys[KEY_G]) {
+			if (tess_level_inner < 64.0) { tess_level_inner *= 2.0; }
+			keys[KEY_G] = false;
+		}
+		if (keys[KEY_V]) {
+			if (tess_level_outer > 1.0) { tess_level_outer *= 0.5; }
+			keys[KEY_V] = false;
+		}
+		if (keys[KEY_B]) {
+			if (tess_level_outer < 64.0) { tess_level_outer *= 2.0; }
+			keys[KEY_B] = false;
 		}
 		if (dy != 0) {
 			rotatey(mouse_modifier*dy);
@@ -459,6 +485,8 @@ int initGL(void)
 	uni_light_loc = glGetUniformLocation(programHandle, "light"); uniform_assert_warn(uni_light_loc);
 	uni_lightsrc_loc = glGetUniformLocation(programHandle, "lightsrc"); uniform_assert_warn(uni_lightsrc_loc);
 	uni_heightmap_loc = glGetUniformLocation(programHandle, "heightmap"); uniform_assert_warn(uni_heightmap_loc);
+	uni_tess_inner_loc = glGetUniformLocation(programHandle, "TESS_LEVEL_INNER"); uniform_assert_warn(uni_tess_inner_loc);
+	uni_tess_outer_loc = glGetUniformLocation(programHandle, "TESS_LEVEL_OUTER"); uniform_assert_warn(uni_tess_outer_loc);
 
 	GLuint NP_programHandle = normal_plot_shader->getProgramHandle();
 	glUseProgram(NP_programHandle);
@@ -477,8 +505,8 @@ int initGL(void)
 	Text::uni_modelview_loc = glGetUniformLocation( text_programHandle, "ModelView" ); uniform_assert_warn(Text::uni_modelview_loc);
 	Text::uni_projection_loc = glGetUniformLocation( text_programHandle, "Projection" ); uniform_assert_warn(Text::uni_projection_loc);
 	Text::uni_texture1_loc = glGetUniformLocation( text_programHandle, "texture1" ); uniform_assert_warn(Text::uni_texture1_loc);
-
-	glEnableVertexAttribArray(0);
+	
+		glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
 	glEnableVertexAttribArray(2);
 
@@ -642,6 +670,8 @@ void drawSpheres()
 
 
 
+	glUniform1f(uni_tess_inner_loc, tess_level_inner);
+	glUniform1f(uni_tess_outer_loc, tess_level_outer);
 	glUniform1i(uni_lightsrc_loc, (*current).lightsrc() ? 1 : 0);	
 	glBindBuffer(GL_ARRAY_BUFFER, (*current).getVBOid());
 	glActiveTexture(GL_TEXTURE0);

@@ -28,5 +28,5 @@ void main() {
 	Normal_GS_in = normalize(Normal_GS_in);
 	WorldPos_GS_in = interpolate3D(WorldPos_ES_in[0], WorldPos_ES_in[1], WorldPos_ES_in[2]);
 
-	gl_Position = vec4(WorldPos_GS_in, 1.0);
+	gl_Position = Projection*vec4(WorldPos_GS_in, 1.0);
 }
