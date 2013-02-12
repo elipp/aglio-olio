@@ -312,14 +312,18 @@ void initializeStrings() {
 
 void drawText() {
 	
-	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	//glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
 	glBindBuffer(GL_ARRAY_BUFFER, wpstring_holder::get_static_VBOid());
 
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(0));
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(2*sizeof(float)));
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(2*sizeof(float)));
 	
 	glUseProgram(text_shader->getProgramHandle());
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, Text::texId);
+
 	glUniform1i(Text::uni_texture1_loc, 0);
 	
 	glUniformMatrix4fv(Text::uni_projection_loc, 1, GL_FALSE, (const GLfloat*)Text::Projection.rawData());
@@ -327,15 +331,12 @@ void drawText() {
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, wpstring_holder::get_IBOid());
 	
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, Text::texId);
-
 	glDrawElements(GL_TRIANGLES, 6*wpstring_holder::get_static_strings_total_length(), GL_UNSIGNED_SHORT, NULL);
 		
 	glBindBuffer(GL_ARRAY_BUFFER, wpstring_holder::get_dynamic_VBOid());
 	// not sure if needed or not
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(0));
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(2*sizeof(float)));
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(2*sizeof(float)));
 
 	glUseProgram(text_shader->getProgramHandle());
 	glUniform1i(Text::uni_texture1_loc, 0);
@@ -383,7 +384,11 @@ static void restoreCursor() {
 	XDefineCursor(dpy, win, cursor);
 }
 
-#define uniform_assert_warn(uniform) if (uniform == -1) { std::cerr << "warning: uniform location assertion failed: " << #uniform << "\n"; }
+#define uniform_assert_warn(uniform) do {\
+if (uniform == -1) { \
+	std::cerr << "(warning: uniform optimized away by GLSL compiler: " << #uniform << " at " << __FILE__ << ":" << __LINE__ << ")\n" ;\
+}\
+} while(0)
 
 int initGL(void)
 {
@@ -402,7 +407,10 @@ int initGL(void)
 	normal_plot_shader = new ShaderProgram("shaders/normalplot");
 	text_shader = new ShaderProgram("shaders/text_shader");
 
-	if (regular_shader->is_bad() || normal_plot_shader->is_bad() || text_shader->is_bad()) { return 0; }
+	if (regular_shader->is_bad() || normal_plot_shader->is_bad() || text_shader->is_bad()) { 
+		fprintf(stderr, "Error: shader error (fatal).\n");
+		return 0; 
+	}
 
 	fprintf(stderr, "Loading models...");
 	GLuint sphere_facecount;
@@ -421,15 +429,13 @@ int initGL(void)
 	hmap_id = TextureBank::get_id_by_name("textures/earth_height_normal_map.png");
 	Text::texId = TextureBank::get_id_by_name("textures/dina_all.png");
 
-	if (!TextureBank::validate())
-		return false;
-
-	/*
-	 * AFTER ALL THIS, THE TEXTURE DATA CAN AND MUST BE FREED!!!
-	 * delete [] texture;
-	 */
+	if (!TextureBank::validate()) {
+		fprintf(stderr, "Error: failed to validate TextureBank (fatal).\n");
+		return 0;
+	}
 
 	printf("OpenGL version: %s\n", glGetString(GL_VERSION));
+	printf("GLSL version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
 	glGenBuffers(1, &IBOid);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOid);
@@ -615,8 +621,40 @@ void drawSpheres()
 	// no need to reconstruct iterator every time
 	static std::vector<Model>::iterator current;
 	current = models.begin();
+	mat4 model_rotation = (*current).rotation.toRotationMatrix();
 
-	for (; current != models.end(); ++current)
+	//(*current)->model_matrix.print();
+
+	//printMatrix4f(model_rotation);
+	mat4 modelview = view * (*current).model_matrix * model_rotation;
+
+	glUniformMatrix4fv(uni_modelview_loc, 1, GL_FALSE, (const GLfloat*) modelview.rawData());
+
+	vec4 light_pos(sin(running), cos(0.11*running), -5.0, 1.0);
+	if (!(*current).lightsrc()) {
+		vec4 light = (light_pos - (*current).position);
+		light(V::w) = 0.0;
+		light.normalize();
+		light(V::w) = 1.0;
+
+			glUniform4fv(uni_light_loc, 1, (const GLfloat*) light.rawData());
+		}
+
+
+
+	glUniform1i(uni_lightsrc_loc, (*current).lightsrc() ? 1 : 0);	
+	glBindBuffer(GL_ARRAY_BUFFER, (*current).getVBOid());
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, (*current).getTextureId());
+	glUniform1i(uni_sampler2d_loc, 0);	// needs to be 0 explicitly :D
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, hmap_id);	// heightmap
+	glUniform1i(uni_heightmap_loc, 1);
+
+	//glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
+	glDrawElements(GL_PATCHES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
+
+	/*for (; current != models.end(); ++current)
 	{
 		//vec4 acceleration(0.0, 0.0, 0.0, 0.0);	// is initialized to zero by default though
 		vec4 acceleration;
@@ -723,6 +761,7 @@ void drawSpheres()
 		//glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
 		glDrawElements(GL_PATCHES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
 	}
+*/
 
 	// draw normals for center sphere
 
@@ -835,7 +874,7 @@ inline int handle_event(XEvent ev) {
 int main(int argc, char* argv[]) {
 
 	if (!createWindow()) { fprintf(stderr, "couldn't create window.\n"); exit(1); }
-	if (!initGL()) { fprintf(stderr, "Failed to initialized OpenGL.\n"); exit(1); }
+	if (!initGL()) { fprintf(stderr, "Failed to initialize OpenGL.\n"); exit(1); }
 	if (!initCursor()) { fprintf(stderr, "Cursor initialization failed.\n"); exit(1); }
 
 	signal(SIGINT, signal_handler);

@@ -2,27 +2,28 @@
 
 precision highp float;
 
-layout (location = 0) in vec3 in_position;
-layout (location = 1) in vec3 in_normal;
-layout (location = 2) in vec2 in_texcoord;	// not used though
+layout (location = 0) in vec3 Position_VS_in;
+layout (location = 1) in vec3 Normal_VS_in;
+layout (location = 2) in vec2 TexCoord_VS_in;
 
 uniform mat4 ModelView;
 uniform sampler2D heightmap;
 
-out vec3 vnormal;
-out vec2 vtexcoord;
+layout (location = 0) out vec3 Position_GS_in;
+layout (location = 1) out vec3 Normal_GS_in;
+layout (location = 2) out vec2 TexCoord_GS_in;
 
 mat3 normal_matrix = mat3(inverse(transpose(mat3(ModelView))));
 
 void main(void)
 {
-	float height_sample = length(texture2D(heightmap, vec2(in_texcoord.x, in_texcoord.y + 0.5)));
-	vec4 normal_map_sample = texture2D(heightmap, in_texcoord);
-	vec3 normal_adjusted = normalize(in_normal + normal_map_sample.xyz);
-	vec3 normal_normalized = normalize(in_normal);
-	gl_Position = vec4(in_position + normal_normalized*height_sample, 1.0);
-	//vnormal = (ModelView*vec4(in_normal, 0.0)).xyz;
-	vnormal=normal_matrix*(in_normal + normal_adjusted);
-	//vnormal = vec4(in_normal,1.0);
-	vtexcoord = in_texcoord;
+	float height_sample = length(texture2D(heightmap, vec2(Normal_VS_in.x, Normal_VS_in.y + 0.5)));
+	vec4 normal_map_sample = texture2D(heightmap, Normal_VS_in);
+	vec3 normal_adjusted = normalize(Normal_VS_in + normal_map_sample.xyz);
+	vec3 normal_normalized = normalize(Normal_VS_in);
+	gl_Position = vec4(Position_VS_in + normal_normalized*height_sample, 1.0);
+	//Normal_GS_in = (ModelView*vec4(Normal_VS_in, 0.0)).xyz;
+	Normal_GS_in=normal_matrix*(Normal_VS_in + normal_adjusted);
+	//Normal_GS_in = vec4(Normal_VS_in,1.0);
+	TexCoord_GS_in = Normal_VS_in;
 }

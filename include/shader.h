@@ -10,7 +10,13 @@
 #define SHADER_NONE (GLuint)-1
 #define SHADER_SUCCESS GL_TRUE
 
-typedef enum { VertexShader = 0, TessellationControlShader, TessellationEvaluationShader, GeometryShader, FragmentShader };
+typedef enum { 
+		VertexShader = 0, 
+		TessellationControlShader = 1, 
+		TessellationEvaluationShader = 2, 
+		GeometryShader = 3, 
+		FragmentShader = 4
+};
 
 class ShaderProgram {
 	std::string id_string;

@@ -1,19 +1,19 @@
-#version 330 
+#version 410  core 
 
-layout (location = 0) in vec2 in_position;
-layout (location = 1) in vec2 in_texcoord;
+layout (location = 0) in vec2 Position_VS_in;
+layout (location = 2) in vec2 TexCoord_VS_in;
 
 uniform mat4 Projection;
 uniform mat4 ModelView;
 
 //out vec2 vpos;	// not really needed
-out vec2 vtexcoord;
+layout (location = 2) out vec2 TexCoord_FS_in;
 
 void main(void) {
 
-	vec4 real_pos = Projection*ModelView*vec4(in_position, 0.0, 1.0);
+	vec4 transformed = Projection*ModelView*vec4(Position_VS_in, 0.0, 1.0);
 //	vpos = real_pos.xy;
-	gl_Position = real_pos;
-	vtexcoord = in_texcoord;
+	gl_Position = transformed;
+	TexCoord_FS_in = TexCoord_VS_in;
 
 }

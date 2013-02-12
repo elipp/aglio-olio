@@ -4,7 +4,16 @@
 
 static char logbuffer[1024];
 
+#define RED_BOLD "\033[1;31m"
+#define COLOR_RESET "\033[0m"
+#define set_bad() do {\
+	bad = false;\
+	std::cerr << RED_BOLD << "Program " << id_string << ": bad flag set @ " << __FILE__ << ":"<< __LINE__ << COLOR_RESET << "\n";\
+} while(0)
+
 ShaderProgram::ShaderProgram(const std::string &name_base) { 	
+
+	bad = false;
 
 	id_string = name_base;
 	shader_filenames[VertexShader] = name_base + "/vs";
@@ -21,10 +30,13 @@ ShaderProgram::ShaderProgram(const std::string &name_base) {
 	     *gs_buf = NULL, 
 	     *fs_buf = NULL;
 
+	
+	// note: program will leak memory on error, but then again these kinds of errors are considered "fatal"
+
 	// read applicable shader source files into buffers, run glCreateShader
 
 	vs_buf = ShaderProgram::readShaderFromFile(shader_filenames[VertexShader], &vs_len);
-	if (!vs_buf) { bad = true; return; }	// vertex shader is mandatory
+	if (!vs_buf) { set_bad(); goto cleanup; }	// vertex shader is mandatory
 	shaderObjIDs[VertexShader] = glCreateShader(GL_VERTEX_SHADER);
 
 	tcs_buf = ShaderProgram::readShaderFromFile(shader_filenames[TessellationControlShader], &tcs_len);
@@ -37,7 +49,7 @@ ShaderProgram::ShaderProgram(const std::string &name_base) {
 		}	
 		else {
 			std::cerr << "ShaderProgram error:" << name_base << ": TessellationControlShader enabled but no TessellationEvaluationShader provided.\n";
-			bad = true; return;
+			set_bad(); goto cleanup;
 		}
 	}
 
@@ -47,7 +59,7 @@ ShaderProgram::ShaderProgram(const std::string &name_base) {
 	}
 
 	fs_buf = ShaderProgram::readShaderFromFile(shader_filenames[FragmentShader], &fs_len);
-	if (!fs_buf) { bad = true; return; } // fragment shader is mandatory
+	if (!fs_buf) { set_bad(); goto cleanup; } // fragment shader is mandatory
 	shaderObjIDs[FragmentShader] = glCreateShader(GL_FRAGMENT_SHADER);
 
 	// shader sources
@@ -65,14 +77,8 @@ ShaderProgram::ShaderProgram(const std::string &name_base) {
 	}
 	glShaderSource(shaderObjIDs[FragmentShader], 1, (const GLchar**)&fs_buf, (const GLint*)&fs_len);
 
-	delete [] vs_buf;
-	if (tcs_buf) delete [] tcs_buf;
-	if (tes_buf) delete [] tes_buf;
-	if (gs_buf) delete [] gs_buf; 
-	delete [] fs_buf;
-
 	// compile everything
-	for (int i = 0; i <= FragmentShader; i++) {
+	for (int i = VertexShader; i <= FragmentShader; i++) {
 		if (shaderObjIDs[i] != SHADER_NONE) { 
 			glCompileShader(shaderObjIDs[i]);
 		}
@@ -81,7 +87,7 @@ ShaderProgram::ShaderProgram(const std::string &name_base) {
 
 	// attach
 	
-	for (int i = 0; i <= FragmentShader; i++) {
+	for (int i = VertexShader; i <= FragmentShader; i++) {
 		if (shaderObjIDs[i] != SHADER_NONE) {
 			glAttachShader(programHandle, shaderObjIDs[i]);
 		}
@@ -96,15 +102,22 @@ ShaderProgram::ShaderProgram(const std::string &name_base) {
 
 	if (!checkShaderCompileStatus_all()) 
 	{
-		bad = true;
-		return;
+		set_bad();
+		goto cleanup;
 	}
 	if (!checkProgramLinkStatus()) {
-		bad = true;
-		return;
+		set_bad();
+		goto cleanup;
 	}
 
-	bad = false;
+	#define my_delete_arr(arr) if(arr) delete [] arr; arr = NULL;
+cleanup:
+	my_delete_arr(vs_buf);
+	my_delete_arr(tcs_buf);
+	my_delete_arr(tes_buf);
+	my_delete_arr(gs_buf); 
+	my_delete_arr(fs_buf);
+
 	printStatus();
 }
 
@@ -127,7 +140,10 @@ char* ShaderProgram::readShaderFromFile(const std::string &filename, GLsizei *fi
 {
 	std::ifstream in(filename.c_str(), std::ios::in | std::ios::binary);
 
-	if (!in.is_open()) { printf("(warning: ShaderProgram: couldn't open file %s: no such file or directory)\n", filename.c_str()); return NULL; }
+	if (!in.is_open()) { 
+		fprintf(stderr, "(warning: ShaderProgram: couldn't open file %s: no such file or directory)\n", filename.c_str());
+		return NULL; 
+	}
 	size_t length = cpp_getfilesize(in);
 	*filesize = length;
 	char *buf = new char[length+1];
@@ -146,7 +162,7 @@ GLint ShaderProgram::checkShaderCompileStatus_all() // GL_COMPILE_STATUS
 	GLchar *log_buffers[5] = { NULL, NULL, NULL, NULL, NULL };
 	GLint num_errors = 0;
 
-	for (int i = 0; i <= FragmentShader; i++) {
+	for (int i = VertexShader; i <= FragmentShader; i++) {
 		if (shaderObjIDs[i] != SHADER_NONE) {
 			glGetShaderiv(shaderObjIDs[i], GL_COMPILE_STATUS, &succeeded[i]);
 
@@ -175,7 +191,7 @@ GLint ShaderProgram::checkShaderCompileStatus_all() // GL_COMPILE_STATUS
 	if (num_errors > 0) {	
 
 		fprintf(stderr, "\nShader %s: error log (glGetShaderInfoLog):\n-----------------------------------------------------------------\n\n", id_string.c_str());
-		for (int i = 0; i <= FragmentShader; i++) {
+		for (int i = VertexShader; i <= FragmentShader; i++) {
 			if (succeeded[i] != GL_TRUE) {
 				fprintf(stderr, "filename: \033[1m %s\033[0m\n\n", shader_filenames[i].c_str());
 				fprintf(stderr, "%s\n\n", log_buffers[i]);
@@ -183,11 +199,11 @@ GLint ShaderProgram::checkShaderCompileStatus_all() // GL_COMPILE_STATUS
 		}
 		std::cerr << "\n---------------------------------------------------\n";
 	}
-	for (int i = 0; i <= FragmentShader; i++) {	
+	for (int i = VertexShader; i <= FragmentShader; i++) {	
 		if (log_buffers[i]) delete [] log_buffers[i];
 		log_buffers[i] = NULL;
 	}
-	return num_errors;
+	return num_errors > 0 ? 0 : 1;
 }
 
 GLint ShaderProgram::checkProgramLinkStatus() {
@@ -201,14 +217,15 @@ GLint ShaderProgram::checkProgramLinkStatus() {
 	}
 	else {
 		glGetProgramInfoLog(programHandle, sizeof(logbuffer), &log_len, logbuffer);
-		std::cerr << "Program " << id_string << " link ok. \n";
+		std::cerr << "Program " << id_string << " link: \n";
 		if (log_len > 0) { std::cerr  << "Link log: \n" << logbuffer << "\n\n"; }
 
 		glValidateProgram(programHandle);
 		glGetProgramInfoLog(programHandle, sizeof(logbuffer), &log_len, logbuffer);
-		std::cerr << "Program " << id_string << " .\n";
+		std::cerr << "Program " << id_string << " validation: \n";
 		if (log_len > 0) { std::cerr  << logbuffer << "\n"; }
 
+		std::cerr << "\n";
 		return 1;
 	}
 }

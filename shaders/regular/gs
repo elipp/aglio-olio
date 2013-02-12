@@ -1,7 +1,7 @@
 #version 410 core
 
 layout(triangles) in;
-//layout(line_strip) out;
+
 layout(triangle_strip) out;
 layout(max_vertices = 3) out;
 
@@ -10,51 +10,28 @@ precision highp float;
 uniform mat4 ModelView;
 uniform mat4 Projection;
 uniform sampler2D texture_color;
+uniform sampler2D heightmap;
 uniform vec4 light;
 uniform int lightsrc;
 uniform float running;
 
-in vec2 TexCoord_CS_in[];
-in vec3 Normal_CS_in[];
+in vec3 Position_GS_in[];
+in vec3 Normal_GS_in[];
+in vec2 TexCoord_GS_in[];
 
-out vec3 fcolor;
 
 void main()
 {
 	// simple pass-through
 	for (int i = 0; i < 3; i++) {
-		const vec4 normalt = normalize(ModelView*vec4(Normal_CS_in[i], 0.0));
+		float height_sample = length(texture2D(heightmap, vec2(TexCoord_GS_in[i].s, TexCoord_GS_in[i].t + 0.5)));
+		const vec4 normalt = normalize(vec4(Normal_GS_in[i], 0.0));
 		const float dotp = dot(normalt, light);
-		const vec4 c = texture2D(texture_color, TexCoord_CS_in[i]);
+		const vec4 c = texture2D(texture_color, TexCoord_GS_in[i]);
 		const vec4 specular = c*pow(dotp, 1.2);
 
-		gl_Position = Projection*ModelView*gl_in[i].gl_Position;
-		if (lightsrc == 0) {
-			fcolor = c.xyz*clamp(dotp, 0.0, 1.0) + specular.xyz;
-		}
-		else { 
-			fcolor = c;
-		}	
+		gl_Position = Projection*vec4(Position_GS_in[i] + 0.01*normalize(Normal_GS_in[i])*height_sample, 1.0);
 		EmitVertex();
 	}
-	EndPrimitive();
-
-	/*const float dotp = dot(normalize(vec4(Normal_CS_in[0], 1.0)), light);
-	const vec4 c = texture2D(texture_color, TexCoord_CS_in[0]);
-	vec4 pos = gl_in[0].gl_Position;
-	vec4 crossp = 0.5*vec4(normalize(cross(pos.xyz, Normal_CS_in[0])), 0.0);
-	
-	fcolor = (0.1*c*clamp(dotp, 0.0, 1.0)).xyz;
-	gl_Position = Projection*ModelView*gl_in[0].gl_Position;
-	EmitVertex();
-	
-	fcolor = vec3(c.y*clamp(dotp, 0.0, 1.0), c.x*sin(running), dotp);
-	gl_Position = Projection*ModelView*(pos + vec4(Normal_CS_in[0], 0.0));
-	EmitVertex();
-
-	fcolor = vec3(c.z*clamp(dotp, 0.0, 1.0), c.y*sin(0.3*running), 1.0);
-	gl_Position = Projection*ModelView*(pos + vec4(Normal_CS_in[0], 0.0) + crossp);
-	EmitVertex();*/
-	
 	EndPrimitive();
 }
