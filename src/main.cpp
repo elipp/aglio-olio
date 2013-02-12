@@ -383,6 +383,8 @@ static void restoreCursor() {
 	XDefineCursor(dpy, win, cursor);
 }
 
+#define uniform_assert_warn(uniform) if (uniform == -1) { std::cerr << "warning: uniform location assertion failed: " << #uniform << "\n"; }
+
 int initGL(void)
 {
 	glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -436,39 +438,39 @@ int initGL(void)
 
 	delete [] indices;	
 
-
-	//glBindFragDataLocation(programHandle, 0, "out_frag_color");
-
+	glPatchParameteri(GL_PATCH_VERTICES, 3);
 
 	GLuint programHandle = regular_shader->getProgramHandle();
 
+	glBindFragDataLocation(programHandle, 0, "out_frag_color");
+
 	glUseProgram(programHandle);
 
-	uni_running_loc = glGetUniformLocation(programHandle, "running"); // no need to assert this, most likely optimized away by GLSL
-	uni_modelview_loc = glGetUniformLocation(programHandle, "ModelView"); assert(uni_modelview_loc != -1);
-	uni_projection_loc = glGetUniformLocation(programHandle, "Projection"); assert(uni_projection_loc != -1);
-	uni_sampler2d_loc = glGetUniformLocation(programHandle, "texture_color"); assert(uni_sampler2d_loc != -1);
-	uni_light_loc = glGetUniformLocation(programHandle, "light"); assert(uni_light_loc != -1);
-	uni_lightsrc_loc = glGetUniformLocation(programHandle, "lightsrc"); assert(uni_lightsrc_loc != -1);
-	uni_heightmap_loc = glGetUniformLocation(programHandle, "heightmap"); assert(uni_heightmap_loc != -1);
+	uni_running_loc = glGetUniformLocation(programHandle, "running"); // no need to uniform_assert_warn this, most likely optimized away by GLSL
+	uni_modelview_loc = glGetUniformLocation(programHandle, "ModelView"); uniform_assert_warn(uni_modelview_loc);
+	uni_projection_loc = glGetUniformLocation(programHandle, "Projection"); uniform_assert_warn(uni_projection_loc);
+	uni_sampler2d_loc = glGetUniformLocation(programHandle, "texture_color"); uniform_assert_warn(uni_sampler2d_loc);
+	uni_light_loc = glGetUniformLocation(programHandle, "light"); uniform_assert_warn(uni_light_loc);
+	uni_lightsrc_loc = glGetUniformLocation(programHandle, "lightsrc"); uniform_assert_warn(uni_lightsrc_loc);
+	uni_heightmap_loc = glGetUniformLocation(programHandle, "heightmap"); uniform_assert_warn(uni_heightmap_loc);
 
 	GLuint NP_programHandle = normal_plot_shader->getProgramHandle();
 	glUseProgram(NP_programHandle);
-	uni_NP_modelview_loc =  glGetUniformLocation(NP_programHandle, "ModelView"); assert(uni_NP_modelview_loc != -1);
-	uni_NP_projection_loc =  glGetUniformLocation(NP_programHandle, "Projection"); assert(uni_NP_modelview_loc != -1);
-	uni_NP_heightmap_loc =  glGetUniformLocation(NP_programHandle, "heightmap"); assert(uni_NP_modelview_loc != -1);
+	uni_NP_modelview_loc =  glGetUniformLocation(NP_programHandle, "ModelView"); uniform_assert_warn(uni_NP_modelview_loc);
+	uni_NP_projection_loc =  glGetUniformLocation(NP_programHandle, "Projection"); uniform_assert_warn(uni_NP_modelview_loc);
+	uni_NP_heightmap_loc =  glGetUniformLocation(NP_programHandle, "heightmap"); uniform_assert_warn(uni_NP_modelview_loc);
 
-	GLuint vPosition = glGetAttribLocation( programHandle, "Position_VS_in"); assert(vPosition != -1);
-	GLuint nPosition = glGetAttribLocation( programHandle, "Normal_VS_in"); assert(nPosition != -1);
-	GLuint tPosition = glGetAttribLocation( programHandle, "TexCoord_VS_in"); assert(tPosition != -1);
-	GLuint fragloc = glGetFragDataLocation( programHandle, "out_frag_color"); assert(fragloc != -1);
+	GLuint vPosition = glGetAttribLocation( programHandle, "Position_VS_in"); uniform_assert_warn(vPosition);
+	GLuint nPosition = glGetAttribLocation( programHandle, "Normal_VS_in"); uniform_assert_warn(nPosition);
+	GLuint tPosition = glGetAttribLocation( programHandle, "TexCoord_VS_in"); uniform_assert_warn(tPosition);
+	//GLuint fragloc = glGetFragDataLocation( programHandle, "out_frag_color"); uniform_assert_warn(fragloc);
 
 	GLuint text_programHandle = text_shader->getProgramHandle();
 	glUseProgram(NP_programHandle);
 
-	Text::uni_modelview_loc = glGetUniformLocation( text_programHandle, "ModelView" ); assert(Text::uni_modelview_loc != -1);
-	Text::uni_projection_loc = glGetUniformLocation( text_programHandle, "Projection" ); assert(Text::uni_projection_loc != -1);
-	Text::uni_texture1_loc = glGetUniformLocation( text_programHandle, "texture1" ); assert(Text::uni_texture1_loc != -1);
+	Text::uni_modelview_loc = glGetUniformLocation( text_programHandle, "ModelView" ); uniform_assert_warn(Text::uni_modelview_loc);
+	Text::uni_projection_loc = glGetUniformLocation( text_programHandle, "Projection" ); uniform_assert_warn(Text::uni_projection_loc);
+	Text::uni_texture1_loc = glGetUniformLocation( text_programHandle, "texture1" ); uniform_assert_warn(Text::uni_texture1_loc);
 
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
@@ -718,7 +720,8 @@ void drawSpheres()
 		glBindTexture(GL_TEXTURE_2D, hmap_id);	// heightmap
 		glUniform1i(uni_heightmap_loc, 1);
 
-		glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
+		//glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
+		glDrawElements(GL_PATCHES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
 	}
 
 	// draw normals for center sphere

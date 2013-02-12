@@ -7,11 +7,11 @@ static char logbuffer[1024];
 ShaderProgram::ShaderProgram(const std::string &name_base) { 	
 
 	id_string = name_base;
-	shader_filenames[VertexShader] = name_base + ".vs";
-	shader_filenames[TessellationControlShader] = name_base + ".tcs";
-	shader_filenames[TessellationEvaluationShader] = name_base + ".tes";
-	shader_filenames[GeometryShader] = name_base + ".gs";
-	shader_filenames[FragmentShader] = name_base + ".fs";
+	shader_filenames[VertexShader] = name_base + "/vs";
+	shader_filenames[TessellationControlShader] = name_base + "/tcs";
+	shader_filenames[TessellationEvaluationShader] = name_base + "/tes";
+	shader_filenames[GeometryShader] = name_base + "/gs";
+	shader_filenames[FragmentShader] = name_base + "/fs";
 
 	GLsizei vs_len, tcs_len, tes_len, gs_len, fs_len;
 
@@ -72,7 +72,7 @@ ShaderProgram::ShaderProgram(const std::string &name_base) {
 	delete [] fs_buf;
 
 	// compile everything
-	for (int i = 0; i < FragmentShader; i++) {
+	for (int i = 0; i <= FragmentShader; i++) {
 		if (shaderObjIDs[i] != SHADER_NONE) { 
 			glCompileShader(shaderObjIDs[i]);
 		}
@@ -81,7 +81,7 @@ ShaderProgram::ShaderProgram(const std::string &name_base) {
 
 	// attach
 	
-	for (int i = 0; i < FragmentShader; i++) {
+	for (int i = 0; i <= FragmentShader; i++) {
 		if (shaderObjIDs[i] != SHADER_NONE) {
 			glAttachShader(programHandle, shaderObjIDs[i]);
 		}
@@ -201,10 +201,14 @@ GLint ShaderProgram::checkProgramLinkStatus() {
 	}
 	else {
 		glGetProgramInfoLog(programHandle, sizeof(logbuffer), &log_len, logbuffer);
-		std::cerr << "Program " << id_string << " link ok. Log: \n" << logbuffer << "\n";
+		std::cerr << "Program " << id_string << " link ok. \n";
+		if (log_len > 0) { std::cerr  << "Link log: \n" << logbuffer << "\n\n"; }
+
 		glValidateProgram(programHandle);
 		glGetProgramInfoLog(programHandle, sizeof(logbuffer), &log_len, logbuffer);
-		std::cerr << "Program " << id_string << " validation log: \n" << logbuffer <<"\n";
+		std::cerr << "Program " << id_string << " .\n";
+		if (log_len > 0) { std::cerr  << logbuffer << "\n"; }
+
 		return 1;
 	}
 }

@@ -1,0 +1,30 @@
+#version 410 core
+
+layout (vertices = 3) out;
+
+layout (location = 0) in vec3 WorldPos_CS_in[];
+layout (location = 1) in vec3 Normal_CS_in[];
+layout (location = 2) in vec2 TexCoord_CS_in[];
+
+layout (location = 0) out vec3 WorldPos_ES_in[];
+layout (location = 1) out vec3 Normal_ES_in[];
+layout (location = 2) out vec2 TexCoord_ES_in[];
+
+#define ID gl_InvocationID
+#define TESSL_INNER 6.0
+#define TESSL_OUTER 6.0
+
+void main()
+{
+	TexCoord_ES_in[ID] = TexCoord_CS_in[ID];
+	Normal_ES_in[ID] = Normal_CS_in[ID];
+	WorldPos_ES_in[ID] = WorldPos_CS_in[ID];
+
+	if (ID == 0) {
+		gl_TessLevelOuter[0] = TESSL_OUTER;
+		gl_TessLevelOuter[1] = TESSL_OUTER;
+		gl_TessLevelOuter[2] = TESSL_OUTER;
+		gl_TessLevelInner[0] = TESSL_INNER;
+	}
+
+}
