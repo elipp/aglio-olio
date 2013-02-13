@@ -1,6 +1,6 @@
 #version 410 core
 
-in vec2 TexCoord_FS_in;
+layout (location=0) in vec2 TexCoord_FS_in;
 
 uniform sampler2D texture1;
 
