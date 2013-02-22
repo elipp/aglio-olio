@@ -7,7 +7,7 @@ static char logbuffer[1024];
 #define RED_BOLD "\033[1;31m"
 #define COLOR_RESET "\033[0m"
 #define set_bad() do {\
-	bad = false;\
+	bad = true;\
 	std::cerr << RED_BOLD << "Program " << id_string << ": bad flag set @ " << __FILE__ << ":"<< __LINE__ << COLOR_RESET << "\n";\
 } while(0)
 
@@ -203,7 +203,8 @@ GLint ShaderProgram::checkShaderCompileStatus_all() // GL_COMPILE_STATUS
 		if (log_buffers[i]) delete [] log_buffers[i];
 		log_buffers[i] = NULL;
 	}
-	return num_errors > 0 ? 0 : 1;
+	if (num_errors > 0) { return false; }
+	else { return true; }
 }
 
 GLint ShaderProgram::checkProgramLinkStatus() {
@@ -217,13 +218,15 @@ GLint ShaderProgram::checkProgramLinkStatus() {
 	}
 	else {
 		glGetProgramInfoLog(programHandle, sizeof(logbuffer), &log_len, logbuffer);
-		std::cerr << "Program " << id_string << " link: \n";
-		if (log_len > 0) { std::cerr  << "Link log: \n" << logbuffer << "\n\n"; }
+		std::cerr << "Program " << id_string << " link: ";
+		if (log_len > 0) { std::cerr  << "log: \n" << logbuffer << "\n\n"; }
+		else { std::cerr << "<OK>\n\n"; }
 
 		glValidateProgram(programHandle);
 		glGetProgramInfoLog(programHandle, sizeof(logbuffer), &log_len, logbuffer);
-		std::cerr << "Program " << id_string << " validation: \n";
-		if (log_len > 0) { std::cerr  << logbuffer << "\n"; }
+		std::cerr << "Program " << id_string << " validation: ";
+		if (log_len > 0) { std::cerr  << "log: \n" << logbuffer << "\n\n"; }
+		else { std::cerr << "<OK>\n\n"; }
 
 		std::cerr << "\n";
 		return 1;

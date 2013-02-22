@@ -16,7 +16,7 @@ uniform int lightsrc;
 
 mat3 ModelView3_inv_T = inverse(transpose(mat3(ModelView)));	//upper 3x3
 const vec3 ambient = vec3( 0.02, 0.02, 0.02 );
-vec3 light = normalize(ModelView3_inv_T*vec3(cos(0.1*running), sin(0.1*running), 0.0 ));
+vec3 light = normalize(ModelView3_inv_T*vec3(cos(0.5*running), sin(0.5*running), 0.0 ));
 
 float diffuse = 1.0;
 

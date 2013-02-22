@@ -4,12 +4,12 @@ CC=g++ -g -march=corei7 # for -msse, -msse2 etc.
 CFLAGS=-c -Wall
 LIBS=-lGL -lGLU -lGLEW -lrt
 
-SOURCES=common.cpp lin_alg.cpp lodepng.cpp main.cpp model.cpp objloader.cpp shader.cpp texture.cpp vertex.cpp text.cpp
+SOURCES=common.cpp lin_alg.cpp lodepng.cpp main.cpp model.cpp objloader.cpp shader.cpp texture.cpp text.cpp
 SRCDIR=src
 sources=$(addprefix $(SRCDIR)/, $(SOURCES))
 
 INCLUDE=-Iinclude
-OBJS=common.o lin_alg.o lodepng.o model.o objloader.o shader.o texture.o vertex.o text.o
+OBJS=common.o lin_alg.o lodepng.o model.o objloader.o shader.o texture.o text.o
 OBJDIR=objs
 objects = $(addprefix $(OBJDIR)/, $(OBJS))
 

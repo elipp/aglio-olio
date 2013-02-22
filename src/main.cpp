@@ -45,6 +45,12 @@
 
 #define KEY_ESC 9
 
+#ifndef M_PI
+#define M_PI 3.14159265359
+#endif
+#define PI_PER_180 M_PI/180.0
+#define RADIANS(angle_in_degrees) (angle_in_degrees)*PI_PER_180
+
 namespace Text {
 	mat4 Projection;
 	mat4 ModelView(MAT_IDENTITY);
@@ -319,9 +325,11 @@ void initializeStrings() {
 	std::string frames("Frames per second: ");
 	wpstring_holder::append(wpstring(frames, WINDOW_WIDTH-180, WINDOW_HEIGHT-20), WPS_STATIC);
 
-	// reserved index 2 for FPS display.
+	// reserved index 2 for FPS display. 
 	std::string initialfps = "00.00";
 	wpstring_holder::append(wpstring(initialfps, WINDOW_WIDTH-50, WINDOW_HEIGHT-20), WPS_DYNAMIC);
+	wpstring_holder::append(wpstring("Camera pos: ", 20, WINDOW_HEIGHT-20), WPS_STATIC);
+	wpstring_holder::append(wpstring("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 102, WINDOW_HEIGHT-20), WPS_DYNAMIC);
 	
 	const std::string help2("'p' for polygonmode toggle.");
 	wpstring_holder::append(wpstring(help2, WINDOW_WIDTH-220, 35), WPS_STATIC);
@@ -339,6 +347,7 @@ void initializeStrings() {
 void drawText() {
 	
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	glDisable(GL_DEPTH_TEST);
 
 	glBindBuffer(GL_ARRAY_BUFFER, wpstring_holder::get_static_VBOid());
 
@@ -378,6 +387,7 @@ void drawText() {
 	glDrawElements(GL_TRIANGLES, 6*wpstring_holder::getDynamicStringCount()*wpstring_max_length, GL_UNSIGNED_SHORT, NULL);
 
 	glUseProgram(0);
+	glEnable(GL_DEPTH_TEST);
 
 }
 
@@ -484,15 +494,15 @@ int initGL(void)
 	uni_sampler2d_loc = glGetUniformLocation(programHandle, "texture_color"); uniform_assert_warn(uni_sampler2d_loc);
 	uni_light_loc = glGetUniformLocation(programHandle, "light"); uniform_assert_warn(uni_light_loc);
 	uni_lightsrc_loc = glGetUniformLocation(programHandle, "lightsrc"); uniform_assert_warn(uni_lightsrc_loc);
-	uni_heightmap_loc = glGetUniformLocation(programHandle, "heightmap"); uniform_assert_warn(uni_heightmap_loc);
+	uni_heightmap_loc = glGetUniformLocation(programHandle, "HEIGHTMAP"); uniform_assert_warn(uni_heightmap_loc);
 	uni_tess_inner_loc = glGetUniformLocation(programHandle, "TESS_LEVEL_INNER"); uniform_assert_warn(uni_tess_inner_loc);
 	uni_tess_outer_loc = glGetUniformLocation(programHandle, "TESS_LEVEL_OUTER"); uniform_assert_warn(uni_tess_outer_loc);
 
 	GLuint NP_programHandle = normal_plot_shader->getProgramHandle();
 	glUseProgram(NP_programHandle);
 	uni_NP_modelview_loc =  glGetUniformLocation(NP_programHandle, "ModelView"); uniform_assert_warn(uni_NP_modelview_loc);
-	uni_NP_projection_loc =  glGetUniformLocation(NP_programHandle, "Projection"); uniform_assert_warn(uni_NP_modelview_loc);
-	uni_NP_heightmap_loc =  glGetUniformLocation(NP_programHandle, "heightmap"); uniform_assert_warn(uni_NP_modelview_loc);
+	uni_NP_projection_loc =  glGetUniformLocation(NP_programHandle, "Projection"); uniform_assert_warn(uni_NP_projection_loc);
+	uni_NP_heightmap_loc =  glGetUniformLocation(NP_programHandle, "heightmap"); uniform_assert_warn(uni_NP_heightmap_loc);
 
 	GLuint vPosition = glGetAttribLocation( programHandle, "Position_VS_in"); uniform_assert_warn(vPosition);
 	GLuint nPosition = glGetAttribLocation( programHandle, "Normal_VS_in"); uniform_assert_warn(nPosition);
@@ -636,10 +646,10 @@ void drawSpheres()
 	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), BUFFER_OFFSET(6*sizeof(float)));
 
 
-	//models[0].rotation = Quaternion::fromAxisAngle(0.0, 0.0, 1.0, 90);
+	models[0].rotation = Quaternion::fromAxisAngle(1.0, 0.0, 0.0, RADIANS(45));
 	//models[0].rotation *= Quaternion::fromAxisAngle(0.0, 1.0, 0.0, running);
 	models[0].rotation.normalize();
-	models[1].rotation = Quaternion::fromAxisAngle(-0.2, 1.0, 0.0, 0.5*running);
+//	models[1].rotation = Quaternion::fromAxisAngle(-0.2, 1.0, 0.0, 0.5*running);
 	models[1].rotation.normalize();
 
 	viewq.normalize();
@@ -677,6 +687,7 @@ void drawSpheres()
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, (*current).getTextureId());
 	glUniform1i(uni_sampler2d_loc, 0);	// needs to be 0 explicitly :D
+
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, hmap_id);	// heightmap
 	glUniform1i(uni_heightmap_loc, 1);
@@ -937,12 +948,17 @@ int main(int argc, char* argv[]) {
 
 		long us = timer.get_us();
 		double fps = 1000000/us;
-		static char buffer[8];
-		sprintf(buffer, "%4.2f", fps);
-		buffer[6] = '\0';
+		static char buffer[128];
+		int l = sprintf(buffer, "%4.2f", fps);
+		buffer[l] = '\0';
 		std::string fps_str(buffer);
 
 		wpstring_holder::updateDynamicString(0, fps_str);
+		l = sprintf(buffer, "(%4.2f, %4.2f, %4.2f)", view_position(V::x), view_position(V::y), view_position(V::z));
+		
+		buffer[l] = '\0';
+		std::string pos_str(buffer);
+		wpstring_holder::updateDynamicString(1, pos_str);
 
 		drawText();
 
