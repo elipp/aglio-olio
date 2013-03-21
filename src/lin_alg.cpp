@@ -20,36 +20,36 @@ const mat4 mat4::identity_const = mat4(identity_arr);
 
 static inline float MM_DPPS_XYZ_SSE(__m128 a, __m128 b) {
 	const m128_f32_union mul = _mm_mul_ps(a, b);
-	return mul.f32[0]+mul.f32[1]+mul.f32[2];
+	return mul.m128_f32[0]+mul.m128_f32[1]+mul.m128_f32[2];
 }
 
 static inline float MM_DPPS_XYZW_SSE(__m128 a, __m128 b) {
 	const m128_f32_union mul = _mm_mul_ps(a, b);
-	return mul.f32[0]+mul.f32[1]+mul.f32[2] + mul.f32[3];
+	return mul.m128_f32[0]+mul.m128_f32[1]+mul.m128_f32[2] + mul.m128_f32[3];
 }
 
 static inline float MM_DPPS_XYZ_SSE3(__m128 a, __m128 b) {
 	m128_f32_union mul = _mm_mul_ps(a, b);
-	 mul.f32[3] = 0.0;	// zeroing out a f32 field in a m128 union
+	 mul.m128_f32[3] = 0.0;	// zeroing out a f32 field in a m128 union
 						// generates only two instructions, a fldz and a fstp
-	 mul = _mm_hadd_ps(mul.v_t, mul.v_t);
-	 mul = _mm_hadd_ps(mul.v_t, mul.v_t);
-	 return mul.f32[0];
+	 mul = _mm_hadd_ps(mul.m128, mul.m128);
+	 mul = _mm_hadd_ps(mul.m128, mul.m128);
+	 return mul.m128_f32[0];
 }
 
 static inline float MM_DPPS_XYZW_SSE3(__m128 a, __m128 b) {
 	m128_f32_union mul = _mm_mul_ps(a, b);
-	mul = _mm_hadd_ps(mul.v_t, mul.v_t);
-	mul = _mm_hadd_ps(mul.v_t, mul.v_t);
-	return mul.f32[0];
+	mul = _mm_hadd_ps(mul.m128, mul.m128);
+	mul = _mm_hadd_ps(mul.m128, mul.m128);
+	return mul.m128_f32[0];
 }
 
 static inline float MM_DPPS_XYZ_SSE41(__m128 a, __m128 b) {
-	return m128_f32_union(_mm_dp_ps(a, b, xyz_dot_mask)).f32[0];
+	return m128_f32_union(_mm_dp_ps(a, b, xyz_dot_mask)).m128_f32[0];
 }
 
 static inline float MM_DPPS_XYZW_SSE41(__m128 a, __m128 b) {
-	return m128_f32_union(_mm_dp_ps(a, b, xyzw_dot_mask)).f32[0];
+	return m128_f32_union(_mm_dp_ps(a, b, xyzw_dot_mask)).m128_f32[0];
 }
 
 // fallback
@@ -58,26 +58,30 @@ const char* checkCPUCapabilities() {
 
 	cpuid_t c;
 	memset(&c, 0, sizeof(c));
+#ifdef _WIN32
+	__cpuid((int*)&c, 1);
+#elif __linux__
 	cpuid(0x1, c);
+#endif
 
-	fprintf(stderr, "cpuid results: %x %x %x %x\n", c.eax, c.ebx, c.ecx, c.edx);
+	logWindowOutput( "cpuid results: %x %x %x %x\n", c.eax, c.ebx, c.ecx, c.edx);
 
 	/*if (!(c.eax & (0x1 << 25))) {
 		return "SSE not supported by host processor!";
 	}
 	else if (!(c.ecx & (0x1))) {
-		printf("SSE3 not supported by host processor. Using SSE for dot product computation.\n"); 
+		logWindowOutput( "SSE3 not supported by host processor. Using SSE for dot product computation.\n"); 
 		MM_DPPS_XYZ = MM_DPPS_XYZ_SSE;
 		MM_DPPS_XYZW = MM_DPPS_XYZW_SSE;
 	}
 	
 	else if (!(c.ecx & (0x1 << 19))) {
-		printf("NOTE: SSE4.1 not supported by host processor. Using SSE3 for dot product computation.\n");
+		logWindowOutput( "NOTE: SSE4.1 not supported by host processor. Using SSE3 for dot product computation.\n");
 		MM_DPPS_XYZ = MM_DPPS_XYZ_SSE3;
 		MM_DPPS_XYZW = MM_DPPS_XYZW_SSE3;
 	}
 	else { 
-		printf("Using SSE4.1 for _mm_dp_ps.\n");
+		logWindowOutput( "Using SSE4.1 for _mm_dp_ps.\n");
 		MM_DPPS_XYZ = MM_DPPS_XYZ_SSE41;
 		MM_DPPS_XYZW = MM_DPPS_XYZW_SSE41;
 	}*/
@@ -90,7 +94,7 @@ const char* checkCPUCapabilities() {
 vec4::vec4(float _x, float _y, float _z, float _w) {
 	// must use _mm_setr_ps for this constructor. Note 'r' for reversed.
 	//data = _mm_setr_ps(_x, _y, _z, _w);
-	data.v_t = _mm_set_ps(_w, _z, _y, _x);	// could be faster, haven't tested
+	data.m128 = _mm_set_ps(_w, _z, _y, _x);	// could be faster, haven't tested
 
 }
 
@@ -108,7 +112,7 @@ void vec4::operator*=(float scalar) {
 
 	// use xmmintrin
 	// data = _mm_mul_ps(data, _mm_load1_ps(&scalar)); // not quite sure this works
-	data = _mm_mul_ps(data.v_t, _mm_set1_ps(scalar));	// the disassembly is pretty much identical between the two though
+	data = _mm_mul_ps(data.m128, _mm_set1_ps(scalar));	// the disassembly is pretty much identical between the two though
 }
 
 vec4 operator*(float scalar, const vec4& v) {
@@ -130,7 +134,7 @@ vec4 vec4::operator*(float scalar) const{
 void vec4::operator/=(float scalar) {
 	// _mm_rcp_ps returns a rough approximation
 	const __m128 scalar_recip = _mm_rcp_ps(_mm_set1_ps(scalar));
-	this->data = _mm_mul_ps(this->data.v_t, scalar_recip);
+	this->data = _mm_mul_ps(this->data.m128, scalar_recip);
 
 }
 
@@ -143,7 +147,7 @@ vec4 vec4::operator/(float scalar) const {
 
 void vec4::operator+=(const vec4 &b) {
 	
-	this->data=_mm_add_ps(data.v_t, b.data.v_t);
+	this->data=_mm_add_ps(data.m128, b.data.m128);
 
 }
 
@@ -156,7 +160,7 @@ vec4 vec4::operator+(const vec4 &b) const {
 }
 
 void vec4::operator-=(const vec4 &b) {
-	this->data=_mm_sub_ps(data.v_t, b.data.v_t);
+	this->data=_mm_sub_ps(data.m128, b.data.m128);
 }
 
 vec4 vec4::operator-(const vec4 &b) const {
@@ -166,19 +170,19 @@ vec4 vec4::operator-(const vec4 &b) const {
 }
 
 vec4 vec4::operator-() const { 
-	return vec4(_mm_mul_ps(MINUS_ONES, this->data.v_t));
+	return vec4(_mm_mul_ps(MINUS_ONES, this->data.m128));
 }
 
 float vec4::length3() const {
-	//return sqrt(_mm_dp_ps(this->data, this->data, xyz_dot_mask).f32[0]);
-	return sqrt(MM_DPPS_XYZ(this->data.v_t, this->data.v_t));
+	//return sqrt(_mm_dp_ps(this->data, this->data, xyz_dot_mask).m128_f32[0]);
+	return sqrt(MM_DPPS_XYZ(this->data.m128, this->data.m128));
 
 }
 
 float vec4::length4() const {
 
-	//return sqrt(_mm_dp_ps(this->data, this->data, xyzw_dot_mask).f32[0]);	// includes x,y,z,w in the computation
-	return sqrt(MM_DPPS_XYZW(this->data.v_t, this->data.v_t));
+	//return sqrt(_mm_dp_ps(this->data, this->data, xyzw_dot_mask).m128_f32[0]);	// includes x,y,z,w in the computation
+	return sqrt(MM_DPPS_XYZW(this->data.m128, this->data.m128));
 
 }
 
@@ -187,7 +191,7 @@ float vec4::length4() const {
 void vec4::normalize() {
 
 	// 0.08397us/iteration for this
-	//const float l_recip = 1.0/sqrt(_mm_dp_ps(this->data, this->data, xyz_dot_mask).f32[0]); // only x,y,z components
+	//const float l_recip = 1.0/sqrt(_mm_dp_ps(this->data, this->data, xyz_dot_mask).m128_f32[0]); // only x,y,z components
 	//this->data = _mm_mul_ps(this->data, _mm_set1_ps(l_recip));
 
 	// 0.07257us/iteration, probably has a bigger error margin though
@@ -196,7 +200,7 @@ void vec4::normalize() {
 
 	// in debug mode (no optimization whatsoever), stripping the temporary value improved
 	// performance to about 0.06786us/iteration
-	this->data = _mm_mul_ps(this->data.v_t, _mm_rcp_ps(_mm_sqrt_ps(_mm_set1_ps(MM_DPPS_XYZ(this->data.v_t, this->data.v_t)))));
+	this->data = _mm_mul_ps(this->data.m128, _mm_rcp_ps(_mm_sqrt_ps(_mm_set1_ps(MM_DPPS_XYZ(this->data.m128, this->data.m128)))));
 
 }
 
@@ -212,7 +216,7 @@ void vec4::zero() {
 
 void vec4::print(){
 
-	printf("(%4.3f, %4.3f, %4.3f, %4.3f)\n", data.f32[0], data.f32[1], data.f32[2], data.f32[3]);
+	printf("(%4.3f, %4.3f, %4.3f, %4.3f)\n", data.m128_f32[0], data.m128_f32[1], data.m128_f32[2], data.m128_f32[3]);
 
 }
 
@@ -235,27 +239,27 @@ void* vec4::rawData() const {
 
 float dot(const vec4 &a, const vec4 &b) {
 	/*__m128 dot = _mm_dp_ps(a.data, b.data, xyz_dot_mask);	
-	return dot.f32[0];	*/
-	return MM_DPPS_XYZ(a.data.v_t, b.data.v_t);
+	return dot.m128_f32[0];	*/
+	return MM_DPPS_XYZ(a.data.m128, b.data.m128);
 	
 	/* SSE solution
 	__m128 mul = _mm_mul_ps(a.data, b.data);
-	return mul.f32[0]+mul.f32[1]+mul.f32[2]+mul.f32[3]; // for xyzw
-	return mul.f32[0]+mul.f32[1]+mul.f32[2] // for xyz only
+	return mul.m128_f32[0]+mul.m128_f32[1]+mul.m128_f32[2]+mul.m128_f32[3]; // for xyzw
+	return mul.m128_f32[0]+mul.m128_f32[1]+mul.m128_f32[2] // for xyz only
 	// the xyz version disassembly is the following:
 	// fld, fadd, fadd, fstp; only four instructions.
 
 	 //or, if SSE3 is available (xyzw)
 	 __m128 mul = _mm_mul_ps(a.data, b.data);
 	 mul = _mm_hadd_ps(mul, mul);
-	 return _mm_hadd_ps(mul, mul).f32[0];
+	 return _mm_hadd_ps(mul, mul).m128_f32[0];
 	
 	// SSE3 xyz:
 	 __m128 mul = _mm_mul_ps(a.data, b.data);
-	 mul.f32[3] = 0.0;	// zeroing out a f32 field in a __m128 union
+	 mul.m128_f32[3] = 0.0;	// zeroing out a f32 field in a __m128 union
 							// generates only two instructions, a fldz and a fstp
 	 mul = _mm_hadd_ps(mul, mul);
-	 return _mm_hadd_ps(mul, mul).f32[0]; */
+	 return _mm_hadd_ps(mul, mul).m128_f32[0]; */
 
 }
 
@@ -268,8 +272,8 @@ vec4 cross(const vec4 &a, const vec4 &b) {
 		
 	return vec4(
 	_mm_sub_ps(
-    _mm_mul_ps(_mm_shuffle_ps(a.data.v_t, a.data.v_t, mask3021), _mm_shuffle_ps(b.data.v_t, b.data.v_t, mask3102)),
-    _mm_mul_ps(_mm_shuffle_ps(a.data.v_t, a.data.v_t, mask3102), _mm_shuffle_ps(b.data.v_t, b.data.v_t, mask3021))
+    _mm_mul_ps(_mm_shuffle_ps(a.data.m128, a.data.m128, mask3021), _mm_shuffle_ps(b.data.m128, b.data.m128, mask3102)),
+    _mm_mul_ps(_mm_shuffle_ps(a.data.m128, a.data.m128, mask3102), _mm_shuffle_ps(b.data.m128, b.data.m128, mask3021))
   )
   );
 
@@ -340,8 +344,8 @@ mat4 mat4::operator* (const mat4& R) const {
 	
 	for (int i = 0; i < 4; i++) {
 		for (int j = 0; j < 4; j++) {
-			//ret.data[j].f32[i] = _mm_dp_ps(R.data[j], L.data[i], xyzw_dot_mask).f32[0];
-			ret.data[j].f32[i] = MM_DPPS_XYZW(R.data[j].v_t, L.data[i].v_t);
+			//ret.data[j].m128_f32[i] = _mm_dp_ps(R.data[j], L.data[i], xyzw_dot_mask).m128_f32[0];
+			ret.data[j].m128_f32[i] = MM_DPPS_XYZW(R.data[j].m128, L.data[i].m128);
 		}
 	}
 	
@@ -374,8 +378,8 @@ vec4 mat4::operator* (const vec4& R) const {
 	const mat4 M = (*this).transposed();
 	vec4 v;
 	for (int i = 0; i < 4; i++) 
-		v(i) = MM_DPPS_XYZW(M.data[i].v_t, R.getData().v_t);
-		//v.getData().f32[i] = _mm_dp_ps(M.data[i], R.getData(), xyzw_dot_mask).f32[0];
+		v(i) = MM_DPPS_XYZW(M.data[i].m128, R.getData().m128);
+		//v.getData().m128_f32[i] = _mm_dp_ps(M.data[i], R.getData(), xyzw_dot_mask).m128_f32[0];
 
 	return v;
 
@@ -397,10 +401,10 @@ vec4 mat4::operator* (const vec4& R) const {
 
 mat4 operator*(float scalar, const mat4& m) {
 	const __m128 scalar_m128 = _mm_set1_ps(scalar);
-	return mat4(_mm_mul_ps(scalar_m128, m.data[0].v_t),
-				_mm_mul_ps(scalar_m128, m.data[1].v_t),
-				_mm_mul_ps(scalar_m128, m.data[2].v_t),
-				_mm_mul_ps(scalar_m128, m.data[3].v_t));
+	return mat4(_mm_mul_ps(scalar_m128, m.data[0].m128),
+				_mm_mul_ps(scalar_m128, m.data[1].m128),
+				_mm_mul_ps(scalar_m128, m.data[2].m128),
+				_mm_mul_ps(scalar_m128, m.data[3].m128));
 
 }
 
@@ -525,7 +529,7 @@ void mat4::make_proj_perspective(float fov_radians, float aspect, float zNear, f
 
 void mat4::transpose() {
 
-	_MM_TRANSPOSE4_PS(data[0].v_t, data[1].v_t, data[2].v_t, data[3].v_t);	// microsoft special in-place transpose macro :P
+	_MM_TRANSPOSE4_PS(data[0].m128, data[1].m128, data[2].m128, data[3].m128);	// microsoft special in-place transpose macro :P
 
 	/* Implemented as follows: (xmmintrin.h) (no copyright though)
 #define _MM_TRANSPOSE4_PS(row0, row1, row2, row3) {                 \
@@ -548,7 +552,7 @@ void mat4::transpose() {
 mat4 mat4::transposed() const {
 
 	mat4 ret = (*this);	// copying can't be avoided
-	_MM_TRANSPOSE4_PS(ret.data[0].v_t, ret.data[1].v_t, ret.data[2].v_t, ret.data[3].v_t);
+	_MM_TRANSPOSE4_PS(ret.data[0].m128, ret.data[1].m128, ret.data[2].m128, ret.data[3].m128);
 	return ret;
 
 }
@@ -566,10 +570,10 @@ mat4 mat4::inverted() const {
 	// _mm_shuffle_pd(a, a, 1) can be used to swap the hi/lo qwords of a __m128d,
 	// and _mm_shuffle_ps(a, a, 0x4E) for a __m128
 
-	__m128	row0 = m.data[0].v_t,
-			row1 = _mm_shuffle_ps(m.data[1].v_t, m.data[1].v_t, mask1032),
-			row2 = m.data[2].v_t,
-			row3 = _mm_shuffle_ps(m.data[3].v_t, m.data[3].v_t, mask1032);
+	__m128	row0 = m.data[0].m128,
+			row1 = _mm_shuffle_ps(m.data[1].m128, m.data[1].m128, mask1032),
+			row2 = m.data[2].m128,
+			row3 = _mm_shuffle_ps(m.data[3].m128, m.data[3].m128, mask1032);
 
 	__m128 det, tmp1;
 
@@ -688,7 +692,7 @@ Quaternion::Quaternion(float x, float y, float z, float w) {
 Quaternion::Quaternion() { data=QUAT_NO_ROTATION; }
 
 Quaternion Quaternion::conjugate() const {
-	return Quaternion(_mm_mul_ps(this->data.v_t, QUAT_CONJUGATE));
+	return Quaternion(_mm_mul_ps(this->data.m128, QUAT_CONJUGATE));
 }
 
 Quaternion Quaternion::fromAxisAngle(float x, float y, float z, float angle) {
@@ -699,7 +703,7 @@ Quaternion Quaternion::fromAxisAngle(float x, float y, float z, float angle) {
 	vec4 axis(x, y, z, 0);
 	axis.normalize();
 
-	q.data = _mm_mul_ps(sin_angle, axis.getData().v_t);
+	q.data = _mm_mul_ps(sin_angle, axis.getData().m128);
 	q(Q::w) = cos(angle);
 	
 	return q;
@@ -711,10 +715,10 @@ void Quaternion::print() const { printf("[(%4.5f, %4.5f, %4.5f), %4.5f]\n\n", el
 void Quaternion::normalize() { 
 
 	Quaternion &Q = (*this);
-	//const float mag_squared = _mm_dp_ps(Q.data, Q.data, xyzw_dot_mask).f32[0];
-	const float mag_squared = MM_DPPS_XYZW(Q.data.v_t, Q.data.v_t);
+	//const float mag_squared = _mm_dp_ps(Q.data, Q.data, xyzw_dot_mask).m128_f32[0];
+	const float mag_squared = MM_DPPS_XYZW(Q.data.m128, Q.data.m128);
 	if (fabs(mag_squared-1.0) > 0.001) {	// to prevent calculations from exploding
-		Q.data = _mm_mul_ps(Q.data.v_t, _mm_set1_ps(1.0/sqrt(mag_squared)));
+		Q.data = _mm_mul_ps(Q.data.m128, _mm_set1_ps(1.0/sqrt(mag_squared)));
 	}
 
 }
@@ -730,13 +734,13 @@ Quaternion Quaternion::operator*(const Quaternion &b) const {
 
 	Quaternion ret(
 	_mm_sub_ps(
-	_mm_mul_ps(_mm_shuffle_ps(a.data.v_t, a.data.v_t, mask3021), _mm_shuffle_ps(b.data.v_t, b.data.v_t, mask3102)),
-	_mm_mul_ps(_mm_shuffle_ps(a.data.v_t, a.data.v_t, mask3102), _mm_shuffle_ps(b.data.v_t, b.data.v_t, mask3021))));
+	_mm_mul_ps(_mm_shuffle_ps(a.data.m128, a.data.m128, mask3021), _mm_shuffle_ps(b.data.m128, b.data.m128, mask3102)),
+	_mm_mul_ps(_mm_shuffle_ps(a.data.m128, a.data.m128, mask3102), _mm_shuffle_ps(b.data.m128, b.data.m128, mask3021))));
 	
 	ret += a.element(Q::w)*b + b.element(Q::w)*a;
 
-	//ret(Q::w) = a.data.f32[Q::w]*b.data.f32[Q::w] - _mm_dp_ps(a.data, b.data, xyz_dot_mask).f32[0];
-	ret(Q::w) = a.element(Q::w) * b.element(Q::w) - MM_DPPS_XYZ(a.data.v_t, b.data.v_t);
+	//ret(Q::w) = a.data.m128_f32[Q::w]*b.data.m128_f32[Q::w] - _mm_dp_ps(a.data, b.data, xyz_dot_mask).m128_f32[0];
+	ret(Q::w) = a.element(Q::w) * b.element(Q::w) - MM_DPPS_XYZ(a.data.m128, b.data.m128);
 	return ret;
 
 }
@@ -746,20 +750,20 @@ void Quaternion::operator*=(const Quaternion &b) {
 }
 
 Quaternion Quaternion::operator*(float scalar) const {
-	return Quaternion(_mm_mul_ps(_mm_set1_ps(scalar), data.v_t));
+	return Quaternion(_mm_mul_ps(_mm_set1_ps(scalar), data.m128));
 }
 
 void Quaternion::operator*=(float scalar) {
-	this->data = _mm_mul_ps(_mm_set1_ps(scalar), data.v_t);
+	this->data = _mm_mul_ps(_mm_set1_ps(scalar), data.m128);
 }
 
 
 Quaternion Quaternion::operator+(const Quaternion& b) const {
-	return Quaternion(_mm_add_ps(this->data.v_t, b.data.v_t));
+	return Quaternion(_mm_add_ps(this->data.m128, b.data.m128));
 }
 
 void Quaternion::operator+=(const Quaternion &b) {
-	this->data = _mm_add_ps(this->data.v_t, b.data.v_t);
+	this->data = _mm_add_ps(this->data.m128, b.data.m128);
 }
 
 // a name such as "applyQuaternionRotation" would be much more fitting,
@@ -769,7 +773,7 @@ vec4 Quaternion::operator*(const vec4& b) const {
 
 	vec4 v(b);
 	v.normalize();
-	Quaternion vec_q(b.getData()), res_q;
+ 	Quaternion vec_q(b.getData().m128), res_q;
 	vec_q(Q::w) = 0.0;
 
 	res_q = vec_q * (*this).conjugate();
@@ -806,5 +810,5 @@ mat4 Quaternion::toRotationMatrix() const {
 }
 
 Quaternion operator*(float scalar, const Quaternion& q) {
-	return Quaternion(_mm_mul_ps(_mm_set1_ps(scalar), q.getData().v_t));
+	return Quaternion(_mm_mul_ps(_mm_set1_ps(scalar), q.getData().m128));
 }

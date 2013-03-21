@@ -284,14 +284,14 @@ unsigned short int* loadBObj(const char* filename, bool compressed, GLuint *VBOi
 	//if (!infile)
 	if(!infile.is_open())
 	{
-		printf("Couldn't open input file %s. Aborting.\n", filename);
+		logWindowOutput( "Couldn't open input file %s. Aborting.\n", filename);
 		return NULL;
 	}
 
 	if (compressed)
 	{
 		if (!checkext(filename, CBOBJ)){ return NULL; }	
-		printf("input file is compressed. decompressing\n");
+		logWindowOutput( "input file is compressed. decompressing\n");
 		//decompress_qlz(infile, &buffer);
 	}
 	else {
@@ -441,7 +441,7 @@ bool checkext(const char* filename, int extID)
 		{			
 			if (filename[i] != extstr[extID][j])
 			{
-				printf("The model file you're trying to load doesn't have extension %s. Aborting!\n", extstr[extID]);
+				logWindowOutput( "The model file you're trying to load doesn't have extension %s. Aborting!\n", extstr[extID]);
 				return false;
 			}
 			
@@ -533,7 +533,7 @@ unsigned short int* loadNewBObj(const char* filename, GLuint *VBOid, GLuint *fac
 	}
 
 	else { 
-		printf("loadNewObj. Couldn't open input file %s", filename);
+		logWindowOutput( "loadNewObj. Couldn't open input file %s", filename);
 		return NULL;
 	}
 
@@ -544,7 +544,7 @@ GLuint loadNewestBObj(const std::string &filename, GLuint *facecount) {
 
 	std::ifstream infile(filename.c_str(), std::ios::binary | std::ios::in);
 	
-	if (!infile.is_open()) { printf("loadNewestBObj: failed loading file %s\n", filename.c_str()); return NULL; }
+	if (!infile.is_open()) { logWindowOutput( "loadNewestBObj: failed loading file %s\n", filename.c_str()); return NULL; }
 	
 	std::size_t filesize = cpp_getfilesize(infile);
 	char *buffer = new char[filesize];

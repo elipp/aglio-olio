@@ -15,22 +15,29 @@ uniform vec4 light;
 uniform int lightsrc;
 uniform float running;
 
-in vec3 Position_GS_in[];
-in vec3 Normal_GS_in[];
-in vec2 TexCoord_GS_in[];
+layout(location = 0) in vec3 Position_GS_in[];
+layout(location = 1) in vec3 Normal_GS_in[];
+layout(location = 2) in vec2 TexCoord_GS_in[];
 
+layout(location = 0) out vec3 Position_FS_in;
+layout(location = 1) out vec3 Normal_FS_in;
+layout(location = 2) out vec2 TexCoord_FS_in;
+
+vec3 getSurfaceNormal(vec3 v0, vec3 v1, vec3 v2) {
+	vec3 p1 = v2 - v0;
+	vec3 p2 = v1 - v0;
+	return normalize(cross(p1,p2));
+}
 
 void main()
 {
+	vec3 surf_norm = getSurfaceNormal(gl_in[0].gl_Position.xyz, gl_in[1].gl_Position.xyz, gl_in[2].gl_Position.xyz);
 	// simple pass-through
-	for (int i = 0; i < 3; i++) {
-		float height_sample = length(texture2D(heightmap, vec2(TexCoord_GS_in[i].s, TexCoord_GS_in[i].t + 0.5)));
-		const vec4 normalt = normalize(vec4(Normal_GS_in[i], 0.0));
-		const float dotp = dot(normalt, light);
-		const vec4 c = texture2D(texture_color, TexCoord_GS_in[i]);
-		const vec4 specular = c*pow(dotp, 1.2);
-
-		gl_Position = Projection*vec4(Position_GS_in[i] + 0.01*normalize(Normal_GS_in[i])*height_sample, 1.0);
+	for (int i = 0; i < gl_in.length(); i++) {
+		gl_Position = Projection*vec4(gl_in[i].gl_Position.xyz,  1.0);
+		Position_FS_in = Position_GS_in[i];
+		Normal_FS_in = 0.5*(surf_norm+Normal_FS_in[i]);
+		TexCoord_FS_in = TexCoord_GS_in[i];
 		EmitVertex();
 	}
 	EndPrimitive();

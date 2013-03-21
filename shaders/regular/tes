@@ -48,5 +48,6 @@ void main() {
 	float hval = texture2D(HEIGHTMAP, vec2(TexCoord_GS_in.s, TexCoord_GS_in.t + 0.5)).x;	
 	//if (hval > 0.08) { hval = hval + 0.1; }
 
-	gl_Position = vec4(WorldPos_GS_in + 0.5*disp_normal_transformed*hval, 1.0);
+//	gl_Position = vec4(WorldPos_GS_in + 0.5*disp_normal_transformed*hval, 1.0);
+	gl_Position = Projection*vec4(WorldPos_GS_in + 0.5*disp_normal_transformed*hval, 1.0);
 }

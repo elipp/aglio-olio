@@ -67,7 +67,7 @@ wpstring::wpstring(const std::string &text_, GLuint x_, GLuint y_) : x(x_), y(y_
 	const std::size_t arg_str_len = text_.length();
 	
 	if (arg_str_len > wpstring_max_length) {
-		printf("text: warning: string length exceeds %d, truncating.\nstring: \"%s\"\n", wpstring_max_length, text_.c_str());
+		logWindowOutput( "text: warning: string length exceeds %d, truncating.\nstring: \"%s\"\n", wpstring_max_length, text_.c_str());
 		text_.copy(text, wpstring_max_length, 0);
 		text[wpstring_max_length-1] = '\0';
 		actual_size = wpstring_max_length;
@@ -158,7 +158,7 @@ void wpstring_holder::append(const wpstring& str, GLuint static_mask) {
 
 void wpstring_holder::createBufferObjects() {
 
-	fprintf(stderr, "sizeof(glyph_texcoords): %lu\n", sizeof(glyph_texcoords)/(8*sizeof(float)));
+	logWindowOutput( "sizeof(glyph_texcoords): %lu\n", sizeof(glyph_texcoords)/(8*sizeof(float)));
 
 	GLushort *common_text_indices = generateCommonTextIndices();
 

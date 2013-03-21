@@ -15,9 +15,6 @@ layout (location = 0) out vec3 WorldPos_CS_in;	// use location-based data passin
 layout (location = 1) out vec3 Normal_CS_in;
 layout (location = 2) out vec2 TexCoord_CS_in;
 
-mat3 normal_matrix = transpose(inverse(mat3(ModelView)));
-//mat3 normal_matrix = transpose(inverse(mat3(ModelView)));
-
 void main(void)
 {
 	

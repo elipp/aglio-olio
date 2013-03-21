@@ -4,20 +4,16 @@
 #include <cmath>
 #include <vector>
 #include <string>
+#include <stdarg.h>
 
 #include <cassert>
 #include <signal.h>
 
-#define GL_GLEXT_PROTOTYPES 1
-
+#include <Windows.h>
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
-#include <GL/glx.h>
-#include <GL/glext.h>
-
-#include <X11/Xlib.h>	// for mouse cursor hiding
-#include <X11/cursorfont.h> // :D:D:
+#include <GL/wglew.h>
 
 #include "lin_alg.h"
 #include "common.h"
@@ -32,19 +28,6 @@
 #define HALF_WINDOW_WIDTH WINDOW_WIDTH/2.0
 #define HALF_WINDOW_HEIGHT WINDOW_HEIGHT/2.0
 
-#define KEY_W 25
-#define KEY_A 38
-#define KEY_S 39
-#define KEY_D 40
-#define KEY_N 57
-#define KEY_P 33
-#define KEY_F 41
-#define KEY_G 42
-#define KEY_V 55
-#define KEY_B 56
-
-#define KEY_ESC 9
-
 #ifndef M_PI
 #define M_PI 3.14159265359
 #endif
@@ -54,23 +37,22 @@
 namespace Text {
 	mat4 Projection;
 	mat4 ModelView(MAT_IDENTITY);
-	GLuint uni_projection_loc, uni_modelview_loc, uni_texture1_loc;
 	GLuint texId;
 }
 
-Display                 *dpy;
-Window                  root;
-GLint                   att[] = { GLX_RGBA, GLX_DEPTH_SIZE, 24, GLX_DOUBLEBUFFER, None };
-XVisualInfo             *vi;
-Colormap                cmap;
-XSetWindowAttributes    swa;
-Window                  win;
-GLXContext              glc;
-XWindowAttributes       gwa;
-XEvent                  xev;
+HGLRC hRC = NULL;
+HDC hDC	  = NULL;
+HWND hWnd = NULL;
+HINSTANCE hInstance;
+
+HWND hWnd_child = NULL;
 
 
-static GLint PMODE = GL_FILL;
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);	// declare wndproc for main window
+LRESULT CALLBACK WndProc_child(HWND, UINT, WPARAM, LPARAM);	// and the same for the child window.
+
+static GLint PMODE = GL_FILL;	// polygon mode toggle
+static LPPOINT cursorPos = new POINT;	/* holds cursor position */
 
 bool active=true;
 bool fullscreen=false;
@@ -78,42 +60,23 @@ bool keys[256] = { false };
 
 static const double GAMMA = 6.67;
 
-static struct mousePos {
-	int x, y;
-} cursorPos;
-
 float c_vel_fwd = 0, c_vel_side = 0;
 
-GLuint  VBOid, 
-	IBOid,
-	facecount,
-	uni_running_loc,
-	uni_modelview_loc,
-	uni_projection_loc,
-	uni_sampler2d_loc,
-	uni_heightmap_loc,
-	uni_light_loc,
-	uni_lightsrc_loc,
-	frag_data_loc,
-	uni_tess_inner_loc,
-	uni_tess_outer_loc;
-
-GLuint uni_NP_modelview_loc,
-       uni_NP_projection_loc,
-       uni_NP_heightmap_loc;
+GLuint IBOid, FBOid, FBO_textureId;
 
 GLfloat tess_level_inner = 1.0;
 GLfloat tess_level_outer = 1.0;
 
 static GLint earth_tex_id, hmap_id;
 
-bool mouseLocked = true;
+bool mouseLocked = false;
 
 GLfloat running = 0.0;
 
 static ShaderProgram *regular_shader;
 static ShaderProgram *normal_plot_shader;
 static ShaderProgram *text_shader;
+static ShaderProgram *atmosphere_shader;
 
 static const float dt = 0.01;
 
@@ -128,26 +91,13 @@ static std::vector<Model> models;
 
 GLushort * indices; 
 
-bool plot_normals = true;
+bool plot_normals = false;
+bool show_atmosphere = false;	 // "atmosphere" xXDDdd
 
 #ifndef M_PI
 #define M_PI 3.1415926535
 #endif
 
-Pixmap bitmapNoData;
-Cursor invisibleCursor;
-Cursor visibleCursor;
-Cursor currentCursor;
-
-static void showCursor(int arg) {
-
-	if (arg) {
-		XDefineCursor(dpy, win, visibleCursor);
-	}
-	else {
-		XDefineCursor(dpy, win, invisibleCursor);
-	}
-}
 void rotatex(float mod) {
 	qy += 0.001*mod;
 	Quaternion xq = Quaternion::fromAxisAngle(1.0, 0.0, 0.0, qx);
@@ -173,63 +123,65 @@ void control()
 	static const float side_modifier = 0.005;
 	static const float mouse_modifier = 0.4;
 
-	static Window root, child;
-	static int rootX, rootY;
 
 	if(mouseLocked) {
 		unsigned int buttonmask;
-		XQueryPointer(dpy, win, &root, &child, &rootX, &rootY, &cursorPos.x, &cursorPos.y, &buttonmask);
-		float dx = (HALF_WINDOW_WIDTH - cursorPos.x);
-		float dy = -(HALF_WINDOW_HEIGHT - cursorPos.y);
+		
+		GetCursorPos(cursorPos);
+		SetCursorPos(HALF_WINDOW_WIDTH, HALF_WINDOW_HEIGHT);
+		float dx = (HALF_WINDOW_WIDTH - cursorPos->x);
+		float dy = -(HALF_WINDOW_HEIGHT - cursorPos->y);
 
-		XWarpPointer(dpy, None, win, 0, 0, 0, 0, HALF_WINDOW_WIDTH, HALF_WINDOW_HEIGHT);
-		XSync(dpy, False);
-
-		if (keys[KEY_W]) {
+		if (keys['W']) {
 			c_vel_fwd += fwd_modifier;
 			//keys['W'] = FALSE;
 		} 
-		if (keys[KEY_S]) {
+		if (keys['S']) {
 			c_vel_fwd -= fwd_modifier;
 			//keys['S'] = FALSE;
 		}
 		c_vel_fwd *= 0.97;
 
-		if (keys[KEY_A]) {
+		if (keys['A']) {
 			c_vel_side -= side_modifier;
 			//keys['A'] = FALSE;
 		} 
-		if (keys[KEY_D]) {
+		if (keys['D']) {
 			c_vel_side += side_modifier;
 			//keys['D'] = FALSE;
 		} 
 		c_vel_side *= 0.95;
 
 
-		if (keys[KEY_N]) {
+		if (keys['N']) {
 			plot_normals = !plot_normals;
-			keys[KEY_N] = false;
+			keys['N'] = false;
 		}
 
-		if (keys[KEY_P]) {
+		if (keys['P']) {
 			PMODE = (PMODE == GL_FILL ? GL_LINE : GL_FILL);
-			keys[KEY_P] = false;
+			keys['P'] = false;
 		}
-		if (keys[KEY_F]) {
+		if (keys['F']) {
 			if (tess_level_inner > 1.0) { tess_level_inner *= 0.5; }
-			keys[KEY_F] = false;
+			keys['F'] = false;
 		}
-		if (keys[KEY_G]) {
+		if (keys['G']) {
 			if (tess_level_inner < 64.0) { tess_level_inner *= 2.0; }
-			keys[KEY_G] = false;
+			keys['G'] = false;
 		}
-		if (keys[KEY_V]) {
+		if (keys['V']) {
 			if (tess_level_outer > 1.0) { tess_level_outer *= 0.5; }
-			keys[KEY_V] = false;
+			keys['V'] = false;
 		}
-		if (keys[KEY_B]) {
+		if (keys['B']) {
 			if (tess_level_outer < 64.0) { tess_level_outer *= 2.0; }
-			keys[KEY_B] = false;
+			keys['B'] = false;
+		}
+
+		if (keys['T']) {
+			show_atmosphere = !show_atmosphere;
+			keys['T'] = false;
 		}
 		if (dy != 0) {
 			rotatey(mouse_modifier*dy);
@@ -263,30 +215,6 @@ GLvoid ResizeGLScene(GLsizei width, GLsizei height)		// Resize And Initialize Th
 static GLuint skybox_VBOid;
 static GLuint skybox_facecount;
 static mat4 skyboxmat(MAT_IDENTITY);
-
-void drawSkybox() {
-
-
-	skyboxmat = mat4::scale(vec4(10.0, 10.0, 10.0, 1.0));
-	mat4 modelview = view * skyboxmat;
-
-	glUniformMatrix4fv(uni_modelview_loc, 1, GL_FALSE, (const GLfloat*) modelview.rawData());
-
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, 0);	// something appropriate
-	glUniform1i(uni_sampler2d_loc, 0);	// needs to be 0 explicitly :D
-	glUniform1i(uni_lightsrc_loc, 1);
-
-	glUniformMatrix4fv(uni_projection_loc, 1, GL_FALSE, (const GLfloat *)projection.rawData());
-
-	glUseProgram(regular_shader->getProgramHandle());	
-
-
-	glBindBuffer(GL_ARRAY_BUFFER, skybox_VBOid);
-	glUniformMatrix4fv(uni_modelview_loc, 1, GL_FALSE, (const GLfloat *)skyboxmat.rawData());
-	glDrawElements(GL_TRIANGLES, skybox_facecount*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
-
-}
 
 inline double rand01() {
 	return (double)rand()/(double)RAND_MAX;
@@ -334,11 +262,14 @@ void initializeStrings() {
 	const std::string help2("'p' for polygonmode toggle.");
 	wpstring_holder::append(wpstring(help2, WINDOW_WIDTH-220, 35), WPS_STATIC);
 
-	const std::string help4("'n' for normal plot toggle.");
-	wpstring_holder::append(wpstring(help4, WINDOW_WIDTH-220, 50), WPS_STATIC);
+	const std::string help3("'n' for normal plot toggle.");
+	wpstring_holder::append(wpstring(help3, WINDOW_WIDTH-220, 50), WPS_STATIC);
+	
+	const std::string help4("'t' for atmosphere toggle.");
+	wpstring_holder::append(wpstring(help4, WINDOW_WIDTH-220, 65), WPS_STATIC);
 
 	const std::string help5("'ESC' to lock/unlock mouse.");
-	wpstring_holder::append(wpstring(help5, WINDOW_WIDTH-220, 65), WPS_STATIC);
+	wpstring_holder::append(wpstring(help5, WINDOW_WIDTH-220, 80), WPS_STATIC);
 
 	wpstring_holder::createBufferObjects();
 
@@ -359,11 +290,9 @@ void drawText() {
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, Text::texId);
 
-	glUniform1i(Text::uni_texture1_loc, 0);
-	
-	glUniformMatrix4fv(Text::uni_projection_loc, 1, GL_FALSE, (const GLfloat*)Text::Projection.rawData());
-	glUniformMatrix4fv(Text::uni_modelview_loc, 1, GL_FALSE, (const GLfloat*)Text::ModelView.rawData());
-
+	text_shader->update_uniform_1i("texture1", 0);
+	text_shader->update_uniform_mat4("ModelView", (const GLfloat*)Text::ModelView.rawData());
+	text_shader->update_uniform_mat4("Projection", (const GLfloat*)Text::Projection.rawData());
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, wpstring_holder::get_IBOid());
 	
 	glDrawElements(GL_TRIANGLES, 6*wpstring_holder::get_static_strings_total_length(), GL_UNSIGNED_SHORT, NULL);
@@ -374,11 +303,9 @@ void drawText() {
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, BUFFER_OFFSET(2*sizeof(float)));
 
 	glUseProgram(text_shader->getProgramHandle());
-	glUniform1i(Text::uni_texture1_loc, 0);
-	
-	glUniformMatrix4fv(Text::uni_projection_loc, 1, GL_FALSE, (const GLfloat*)Text::Projection.rawData());
-	glUniformMatrix4fv(Text::uni_modelview_loc, 1, GL_FALSE, (const GLfloat*)Text::ModelView.rawData());
-
+	text_shader->update_uniform_1i("texture1", 0);
+	text_shader->update_uniform_mat4("ModelView", (const GLfloat*)Text::ModelView.rawData());
+	text_shader->update_uniform_mat4("Projection", (const GLfloat*)Text::Projection.rawData());
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, wpstring_holder::get_IBOid());
 	
 	glActiveTexture(GL_TEXTURE0);
@@ -392,37 +319,9 @@ void drawText() {
 }
 
 
-
-
-static int initCursor() {
-
-	XColor black;
-	static char noData[] = { 0,0,0,0,0,0,0,0 };
-	black.red = black.green = black.blue = 0;
-
-
-	visibleCursor=XCreateFontCursor(dpy, XC_left_ptr);
-
-	bitmapNoData = XCreateBitmapFromData(dpy, win, noData, 8, 8);
-	invisibleCursor = XCreatePixmapCursor(dpy, bitmapNoData, bitmapNoData,
-			&black, &black, 0, 0);
-	XDefineCursor(dpy, win, invisibleCursor);
-
-
-}
-static void restoreCursor() {
-	Cursor cursor;
-	XFreeCursor(dpy, invisibleCursor);
-	XFreePixmap(dpy, bitmapNoData);	// can perhaps be moved to initCursor
-	XUndefineCursor(dpy, win);
-
-	cursor=XCreateFontCursor(dpy, XC_left_ptr);
-	XDefineCursor(dpy, win, cursor);
-}
-
 #define uniform_assert_warn(uniform) do {\
 if (uniform == -1) { \
-	std::cerr << "(warning: uniform optimized away by GLSL compiler: " << #uniform << " at " << __FILE__ << ":" << __LINE__ << ")\n" ;\
+	logWindowOutput("(warning: uniform optimized away by GLSL compiler: %s at %d:%d\n", #uniform, __FILE__, __LINE__);\
 }\
 } while(0)
 
@@ -436,42 +335,43 @@ int initGL(void)
 
 	if (GLEW_OK != err)
 	{
-		fprintf(stderr, "Error: %s\n", glewGetErrorString(err));
+		logWindowOutput( "Error: %s\n", glewGetErrorString(err));
 	}
 
 	regular_shader = new ShaderProgram("shaders/regular"); 
 	normal_plot_shader = new ShaderProgram("shaders/normalplot");
 	text_shader = new ShaderProgram("shaders/text_shader");
+	atmosphere_shader = new ShaderProgram("shaders/atmosphere");
 
-	if (regular_shader->is_bad() || normal_plot_shader->is_bad() || text_shader->is_bad()) { 
-		fprintf(stderr, "Error: shader error (fatal).\n");
+	if (regular_shader->is_bad() || normal_plot_shader->is_bad() || text_shader->is_bad() || atmosphere_shader->is_bad()) { 
+		logWindowOutput( "Error: shader error (fatal).\n");
 		return 0; 
 	}
 
-	fprintf(stderr, "Loading models...");
+	logWindowOutput( "Loading models...");
 	GLuint sphere_facecount;
 	GLuint sphere_VBOid = loadNewestBObj("models/maapallo_napa_korjattu.bobj", &sphere_facecount);
 	skybox_VBOid = loadNewestBObj("models/skybox.bobj", &skybox_facecount);
-	fprintf(stderr, "done.\n");
+	logWindowOutput( "done.\n");
 
-	fprintf(stderr, "Loading textures...");
+	logWindowOutput( "Loading textures...");
 	indices = generateIndices();
 	TextureBank::add(Texture("textures/EarthTexture.png", GL_LINEAR));
 	TextureBank::add(Texture("textures/earth_height_normal_map.png", GL_LINEAR));
 	TextureBank::add(Texture("textures/dina_all.png", GL_NEAREST));
-	fprintf(stderr, "done.\n");
+	logWindowOutput( "done.\n");
 
 	earth_tex_id = TextureBank::get_id_by_name("textures/EarthTexture.png");
 	hmap_id = TextureBank::get_id_by_name("textures/earth_height_normal_map.png");
 	Text::texId = TextureBank::get_id_by_name("textures/dina_all.png");
 
 	if (!TextureBank::validate()) {
-		fprintf(stderr, "Error: failed to validate TextureBank (fatal).\n");
+		logWindowOutput( "Error: failed to validate TextureBank (fatal).\n");
 		return 0;
 	}
 
-	printf("OpenGL version: %s\n", glGetString(GL_VERSION));
-	printf("GLSL version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+	logWindowOutput( "OpenGL version: %s\n", glGetString(GL_VERSION));
+	logWindowOutput( "GLSL version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
 	glGenBuffers(1, &IBOid);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOid);
@@ -482,41 +382,18 @@ int initGL(void)
 
 	glPatchParameteri(GL_PATCH_VERTICES, 3);
 
-	GLuint programHandle = regular_shader->getProgramHandle();
+	//GLuint programHandle = regular_shader->getProgramHandle();
 
-	glBindFragDataLocation(programHandle, 0, "out_frag_color");
+	//glBindFragDataLocation(programHandle, 0, "out_frag_color");
+	regular_shader->construct_uniform_map();
+	normal_plot_shader->construct_uniform_map();
+	text_shader->construct_uniform_map();
+	atmosphere_shader->construct_uniform_map();
 
-	glUseProgram(programHandle);
 
-	uni_running_loc = glGetUniformLocation(programHandle, "running"); // no need to uniform_assert_warn this, most likely optimized away by GLSL
-	uni_modelview_loc = glGetUniformLocation(programHandle, "ModelView"); uniform_assert_warn(uni_modelview_loc);
-	uni_projection_loc = glGetUniformLocation(programHandle, "Projection"); uniform_assert_warn(uni_projection_loc);
-	uni_sampler2d_loc = glGetUniformLocation(programHandle, "texture_color"); uniform_assert_warn(uni_sampler2d_loc);
-	uni_light_loc = glGetUniformLocation(programHandle, "light"); uniform_assert_warn(uni_light_loc);
-	uni_lightsrc_loc = glGetUniformLocation(programHandle, "lightsrc"); uniform_assert_warn(uni_lightsrc_loc);
-	uni_heightmap_loc = glGetUniformLocation(programHandle, "HEIGHTMAP"); uniform_assert_warn(uni_heightmap_loc);
-	uni_tess_inner_loc = glGetUniformLocation(programHandle, "TESS_LEVEL_INNER"); uniform_assert_warn(uni_tess_inner_loc);
-	uni_tess_outer_loc = glGetUniformLocation(programHandle, "TESS_LEVEL_OUTER"); uniform_assert_warn(uni_tess_outer_loc);
-
-	GLuint NP_programHandle = normal_plot_shader->getProgramHandle();
-	glUseProgram(NP_programHandle);
-	uni_NP_modelview_loc =  glGetUniformLocation(NP_programHandle, "ModelView"); uniform_assert_warn(uni_NP_modelview_loc);
-	uni_NP_projection_loc =  glGetUniformLocation(NP_programHandle, "Projection"); uniform_assert_warn(uni_NP_projection_loc);
-	uni_NP_heightmap_loc =  glGetUniformLocation(NP_programHandle, "heightmap"); uniform_assert_warn(uni_NP_heightmap_loc);
-
-	GLuint vPosition = glGetAttribLocation( programHandle, "Position_VS_in"); uniform_assert_warn(vPosition);
-	GLuint nPosition = glGetAttribLocation( programHandle, "Normal_VS_in"); uniform_assert_warn(nPosition);
-	GLuint tPosition = glGetAttribLocation( programHandle, "TexCoord_VS_in"); uniform_assert_warn(tPosition);
 	//GLuint fragloc = glGetFragDataLocation( programHandle, "out_frag_color"); uniform_assert_warn(fragloc);
 
-	GLuint text_programHandle = text_shader->getProgramHandle();
-	glUseProgram(NP_programHandle);
-
-	Text::uni_modelview_loc = glGetUniformLocation( text_programHandle, "ModelView" ); uniform_assert_warn(Text::uni_modelview_loc);
-	Text::uni_projection_loc = glGetUniformLocation( text_programHandle, "Projection" ); uniform_assert_warn(Text::uni_projection_loc);
-	Text::uni_texture1_loc = glGetUniformLocation( text_programHandle, "texture1" ); uniform_assert_warn(Text::uni_texture1_loc);
-	
-		glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
 	glEnableVertexAttribArray(2);
 
@@ -588,6 +465,38 @@ int initGL(void)
 
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOid);
+
+	// fbo generation for shadow mapping stuff.
+
+	glGenFramebuffers(1, &FBOid);
+	glBindFramebuffer(GL_FRAMEBUFFER, FBOid);
+
+	glGenTextures(1, &FBO_textureId);
+	glBindTexture(GL_TEXTURE_2D, FBO_textureId);
+
+static int SHADOW_MAP_WIDTH = 1*WINDOW_WIDTH;
+static int SHADOW_MAP_HEIGHT = 1*WINDOW_HEIGHT;
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, NULL);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP );	// these two are related to artifact mitigation
+	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP );
+
+	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, FBO_textureId, 0);
+
+	glDrawBuffer(GL_NONE);	// this, too, has something to do with only including the depth component 
+	glReadBuffer(GL_NONE);
+
+	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		logWindowOutput( "error: Shadow-map FBO initialization failed!\n");
+		return 0;
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
 	return 1;
 
 }
@@ -630,9 +539,8 @@ void drawSpheres()
 	running += 0.015;
 	if (running > 1000000) { running = 0; }
 
-	glUniform1f(uni_running_loc, running);
-
-	glUniformMatrix4fv(uni_projection_loc, 1, GL_FALSE, (const GLfloat *)projection.rawData());
+	regular_shader->update_uniform_1f("running", running);
+	regular_shader->update_uniform_mat4("Projection", (const GLfloat*)projection.rawData());
 
 	static const GLuint sphere_VBOid = models[0].getVBOid();
 	static const GLuint sphere_facecount = models[0].getFaceCount();
@@ -666,34 +574,44 @@ void drawSpheres()
 	//printMatrix4f(model_rotation);
 	mat4 modelview = view * (*current).model_matrix * model_rotation;
 
-	glUniformMatrix4fv(uni_modelview_loc, 1, GL_FALSE, (const GLfloat*) modelview.rawData());
-
+	regular_shader->update_uniform_mat4("ModelView", (const GLfloat*)modelview.rawData());
 	vec4 light_pos(sin(running), cos(0.11*running), -5.0, 1.0);
-	if (!(*current).lightsrc()) {
-		vec4 light = (light_pos - (*current).position);
-		light(V::w) = 0.0;
-		light.normalize();
-		light(V::w) = 1.0;
+	
+	//if (!(*current).lightsrc()) {
+		vec4 light_dir = vec4(sin(running), 0, cos(running), 0.0);
+		light_dir.normalize();
+		regular_shader->update_uniform_vec4("light_dir", (const GLfloat*)light_dir.rawData());
+	//}
+	regular_shader->update_uniform_1f("TESS_LEVEL_INNER", tess_level_inner); 
+	regular_shader->update_uniform_1f("TESS_LEVEL_OUTER", tess_level_outer);
+	regular_shader->update_uniform_1i("lightsrc", current->lightsrc());
 
-			glUniform4fv(uni_light_loc, 1, (const GLfloat*) light.rawData());
-		}
-
-
-
-	glUniform1f(uni_tess_inner_loc, tess_level_inner);
-	glUniform1f(uni_tess_outer_loc, tess_level_outer);
-	glUniform1i(uni_lightsrc_loc, (*current).lightsrc() ? 1 : 0);	
 	glBindBuffer(GL_ARRAY_BUFFER, (*current).getVBOid());
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, (*current).getTextureId());
-	glUniform1i(uni_sampler2d_loc, 0);	// needs to be 0 explicitly :D
-
+	regular_shader->update_uniform_1i("texture_color", 0);
+	
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, hmap_id);	// heightmap
-	glUniform1i(uni_heightmap_loc, 1);
+	regular_shader->update_uniform_1i("heightmap", 1);
 
-	//glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
+	glDisable(GL_BLEND);
 	glDrawElements(GL_PATCHES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
+
+	// draw atmosphere
+
+	if (show_atmosphere) {
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		glUseProgram(atmosphere_shader->getProgramHandle());
+
+		mat4 scaled = mat4::scale(vec4(1.1, 1.1, 1.1, 1.0));
+		mat4 atmosphere_modelview = view * (scaled*(*current).model_matrix)*model_rotation;
+
+		atmosphere_shader->update_uniform_mat4("ModelView", (const GLfloat*) atmosphere_modelview.rawData());
+		atmosphere_shader->update_uniform_mat4("Projection", (const GLfloat*) projection.rawData());
+		glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
+	}
 
 	/*for (; current != models.end(); ++current)
 	{
@@ -810,11 +728,11 @@ void drawSpheres()
 		glUseProgram(normal_plot_shader->getProgramHandle());
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, hmap_id);
-		glUniform1i(uni_NP_heightmap_loc, 1);
+		normal_plot_shader->update_uniform_1i("heightmap", 1);
 
 		mat4 modelview = view * models[0].model_matrix * models[0].rotation.toRotationMatrix();
-		glUniformMatrix4fv(uni_NP_projection_loc, 1, GL_FALSE, (const GLfloat *)projection.rawData());
-		glUniformMatrix4fv(uni_NP_modelview_loc, 1, GL_FALSE, (const GLfloat*) modelview.rawData());
+		normal_plot_shader->update_uniform_mat4("ModelView", (const GLfloat*) modelview.rawData());
+		normal_plot_shader->update_uniform_mat4("Projection", (const GLfloat*) projection.rawData());
 
 		glDrawElements(GL_POINTS, models[0].getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
 	}
@@ -822,154 +740,428 @@ void drawSpheres()
 
 /* callbacks */
 
-void signal_handler(int sig) {
+void KillGLWindow(void)
+{
+	if(hRC)
+	{
+		if(!wglMakeCurrent(NULL,NULL))
+		{
+			MessageBox(NULL, "wglMakeCurrent(NULL,NULL) failed", "erreur", MB_OK | MB_ICONINFORMATION);
+		}
 
-	exit(sig);
+		if (!wglDeleteContext(hRC))
+		{
+			MessageBox(NULL, "RELEASE of rendering context failed.", "error", MB_OK | MB_ICONINFORMATION);
+		}
+		hRC=NULL;
+
+		if(hDC && !ReleaseDC(hWnd, hDC))
+		{
+			MessageBox(NULL, "Release DC failed.", "ERREUX", MB_OK | MB_ICONINFORMATION);
+			hDC=NULL;
+		}
+
+		if(hWnd && !DestroyWindow(hWnd))
+		{
+			MessageBox(NULL, "couldn't release hWnd.", "erruexz", MB_OK|MB_ICONINFORMATION);
+			hWnd=NULL;
+		}
+
+		if (!UnregisterClass("OpenGL", hInstance))
+		{
+			MessageBox(NULL, "couldn't unregister class.", "err", MB_OK | MB_ICONINFORMATION);
+			hInstance=NULL;
+		}
+
+	}
 
 }
 
-void cleanup() {
-
-	glXMakeCurrent(dpy, None, NULL);
-	glXDestroyContext(dpy, glc);
-	XDestroyWindow(dpy, win);
-	XCloseDisplay(dpy);
-
-	glDeleteBuffers(1, &VBOid);
-	glDeleteBuffers(1, &IBOid);
-	restoreCursor();
-
+std::string *convertLF_to_CRLF(const char *buf) {
+	std::string *buffer = new std::string(buf);
+	size_t start_pos = 0;
+	static const std::string LF = "\n";
+	static const std::string CRLF = "\r\n";
+    while((start_pos = buffer->find(LF, start_pos)) != std::string::npos) {
+        buffer->replace(start_pos, LF.length(), CRLF);
+        start_pos += LF.length()+1; // +1 to avoid the new \n we just created :P
+    }
+	return buffer;
 }
 
-//void GLFWCALL key_callback(int key, int action) {
-//keys[key] = (action != 0);	// action == GLFW_PRESS (==1) or GLFW_RELEASE (==0)
-//}
+void logWindowOutput(const char *format, ...) {
+	static char msg_buf[2048];
+	va_list args;
+	va_start(args, format);
+	SYSTEMTIME st;
+    GetSystemTime(&st);
+	std::string *converted = convertLF_to_CRLF(format);
+	std::size_t timestamp_len = sprintf(msg_buf, "%02d:%02d:%02d.%03d > ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+	std::size_t msg_len = vsprintf(msg_buf + timestamp_len, converted->c_str(), args);
+	std::size_t total_len = timestamp_len + msg_len;
+	msg_buf[total_len] = '\0';	// windows newline (CR LF)
+	delete converted;
+    va_end(args);
+	int nLength = GetWindowTextLength(hWnd_child); 
+   SendMessage(hWnd_child, EM_SETSEL, (WPARAM)nLength, (LPARAM)nLength);
+   SendMessage(hWnd_child, EM_REPLACESEL, (WPARAM)FALSE, (LPARAM)msg_buf);
+   SendMessage(hWnd_child, EM_SCROLLCARET, (WPARAM)0, (LPARAM)0);
+   
+}
 
-int createWindow() {
 
-	dpy = XOpenDisplay(NULL);
+BOOL CreateGLWindow(char* title, int width, int height, int bits, bool fullscreenflag)
+{
+	GLuint PixelFormat;
+	WNDCLASS wc;
+	DWORD dwExStyle;
+	DWORD dwStyle;
 
-	if(dpy == NULL) {
-		printf("createWindow: cannot connect to X server\n");
-		exit(0);
+	RECT WindowRect;
+	WindowRect.left=(long)0;
+	WindowRect.right=(long)width;
+	WindowRect.top=(long)0;
+	WindowRect.bottom=(long)height;
+
+	fullscreen = fullscreenflag;
+
+	hInstance = GetModuleHandle(NULL);
+	wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+	wc.lpfnWndProc = (WNDPROC) WndProc;
+	wc.cbClsExtra = 0;
+	wc.cbWndExtra = 0;
+	wc.hInstance = hInstance;
+	wc.hIcon = LoadIcon(NULL, IDI_WINLOGO);
+	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wc.hbrBackground = NULL;
+	wc.lpszMenuName = NULL;
+	wc.lpszClassName = "OpenGL";
+
+	if (!RegisterClass(&wc))
+	{
+		MessageBox(NULL, "FAILED TO REGISTER THE WINDOW CLASS.", "ERROR", MB_OK | MB_ICONEXCLAMATION);
+		return FALSE;
 	}
 
-	root = DefaultRootWindow(dpy);
+	DEVMODE dmScreenSettings;
+	memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));
+	dmScreenSettings.dmSize = sizeof(dmScreenSettings);
+	dmScreenSettings.dmPelsWidth = width;
+	dmScreenSettings.dmPelsHeight = height;
+	dmScreenSettings.dmBitsPerPel = bits;
+	dmScreenSettings.dmFields= DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
 
-	vi = glXChooseVisual(dpy, 0, att);
+	/*
+	 * no need to test this now that fullscreen is turned off
+	 *
+	if (ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN) != DISP_CHANGE_SUCCESSFUL)
+	{
+		if (MessageBox(NULL, "The requested fullscreen mode is not supported by\nyour video card. Use Windowed mode instead?", "warn", MB_YESNO | MB_ICONEXCLAMATION)==IDYES)
+		{
+			fullscreen=FALSE;
+		}
+		else {
 
-	if(vi == NULL) {
-		printf("no appropriate visual found\n");
-		exit(0);
+			MessageBox(NULL, "Program willl now close.", "ERROR", MB_OK|MB_ICONSTOP);
+			return FALSE;
+		}
+	}*/
+
+	if (fullscreen)
+	{
+		dwExStyle=WS_EX_APPWINDOW;
+		dwStyle=WS_POPUP;
+
 	}
+
 	else {
-		printf("glXChooseVisual: visual %p selected\n", (void *)vi->visualid); /* %p creates hexadecimal output like in glxinfo */
+		dwExStyle=WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
+		dwStyle=WS_OVERLAPPEDWINDOW;
+	}
+
+	AdjustWindowRectEx(&WindowRect, dwStyle, FALSE, dwExStyle);
+
+	if(!(hWnd=CreateWindowEx( dwExStyle, "OpenGL", title,
+							  WS_CLIPSIBLINGS | WS_CLIPCHILDREN | dwStyle,
+							  0, 0,
+							  WindowRect.right-WindowRect.left,
+							  WindowRect.bottom-WindowRect.top,
+							  NULL,
+							  NULL,
+							  hInstance,
+							  NULL)))
+	{
+		KillGLWindow();
+		MessageBox(NULL, "window creation error.", "ERROR", MB_OK|MB_ICONEXCLAMATION);
+		return FALSE;
 	}
 
 
-	cmap = XCreateColormap(dpy, root, vi->visual, AllocNone);
+	static PIXELFORMATDESCRIPTOR pfd =
+	{
+		sizeof(PIXELFORMATDESCRIPTOR),
+		1,
+		PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
+		PFD_TYPE_RGBA,
+		bits,
+		0, 0, 0, 0, 0, 0,
+		0,
+		0,
+		0,
+		0, 0, 0, 0,
+		16,
+		0,
+		0,
+		PFD_MAIN_PLANE,
+		0,
+		0, 0, 0
+	};
 
-	swa.colormap = cmap;
-	swa.event_mask = ExposureMask | KeyPressMask;
+	if (!(hDC=GetDC(hWnd)))
+	{
+		KillGLWindow();
+		MessageBox(NULL, "CANT CREATE A GL DEVICE CONTEXT.", "ERROR", MB_OK|MB_ICONEXCLAMATION);
+		return FALSE;
+	}
 
-	win = XCreateWindow(dpy, root, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, vi->depth, InputOutput, vi->visual, CWColormap | CWEventMask, &swa);
+	if (!(PixelFormat = ChoosePixelFormat(hDC, &pfd)))
+	{
+		KillGLWindow();
+		MessageBox(NULL, "cant find a suitable pixelformat.", "ERROUE", MB_OK|MB_ICONEXCLAMATION);
+		return FALSE;
+	}
 
-	XSelectInput(dpy, win, ButtonPressMask|StructureNotifyMask|KeyPressMask|KeyReleaseMask);
-	XMapWindow(dpy, win);
-	XStoreName(dpy, win, "aglio-olio, biatch!");
 
-	glc = glXCreateContext(dpy, vi, NULL, GL_TRUE);
-	glXMakeCurrent(dpy, win, glc);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glXSwapBuffers(dpy, win);
+	if(!SetPixelFormat(hDC, PixelFormat, &pfd))
+	{
+		KillGLWindow();
+		MessageBox(NULL, "Can't SET ZE PIXEL FORMAT.", "ERROU", MB_OK|MB_ICONEXCLAMATION);
+		return FALSE;
+	}
 
-	// Initialize GLEW
-	//glewExperimental=true; // Needed in core profile
-	if (glewInit() != GLEW_OK) {
-		fprintf(stderr, "Failed to initialize GLEW\n");
+	if(!(hRC=wglCreateContext(hDC)))
+	{
+		KillGLWindow();
+		MessageBox(NULL, "WGLCREATECONTEXT FAILED.", "ERREUHX", MB_OK|MB_ICONEXCLAMATION);
+		return FALSE;
+	}
+
+	if(!wglMakeCurrent(hDC, hRC))
+	{
+		KillGLWindow();
+		MessageBox(NULL, "Can't activate the gl rendering context.", "ERAIX", MB_OK|MB_ICONEXCLAMATION);
+		return FALSE;
+	}
+
+	ShowWindow(hWnd, SW_SHOW);
+	SetForegroundWindow(hWnd);
+	SetFocus(hWnd);
+	ResizeGLScene(width, height);
+
+	// create child window for logging :P
+	WNDCLASSEX wc_c;
+    static char *className_c = "Log window";
+    static char *windowName_c = "aglio-olio: Log window";
+
+    wc_c.cbSize        = sizeof (WNDCLASSEX);
+    wc_c.style         = 0;
+    wc_c.lpfnWndProc   = WndProc_child;
+    wc_c.cbClsExtra    = 0;
+    wc_c.cbWndExtra    = 0;
+    wc_c.hIcon         = LoadIcon (NULL, IDI_APPLICATION);
+    wc_c.hCursor       = LoadCursor(NULL, IDC_ARROW);
+    wc_c.hbrBackground = (HBRUSH) GetStockObject (GRAY_BRUSH);
+    wc_c.lpszMenuName  = NULL;
+    wc_c.lpszClassName = className_c;
+    wc_c.hInstance     = hInstance;
+    wc_c.hIconSm       = LoadIcon (NULL, IDI_APPLICATION);
+	
+	ATOM child_register = RegisterClassEx (&wc_c);
+    DWORD child_get_last_error  = GetLastError ();
+ 
+    
+    hWnd_child = CreateWindowEx ( WS_EX_CLIENTEDGE,                      // no extended styles           
+                                "EDIT",           // class name                   
+                                windowName_c,          // window name                  
+                                WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_VSCROLL |
+                                ES_LEFT | ES_MULTILINE | ES_READONLY,        
+                                CW_USEDEFAULT,          // default horizontal position  
+                                CW_USEDEFAULT,          // default vertical position    
+                                1024,          // default width                
+                                768,          // default height               
+                                hWnd, 
+                                (HMENU) NULL,           // class menu used              
+                                hInstance,              // instance handle              
+                                NULL);                  // no window creation data      
+ 
+    if (!hWnd_child) 
+        return FALSE; 
+
+	HFONT myFont = CreateFont(12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "Consolas");
+
+	SendMessage(hWnd_child, WM_SETFONT, WPARAM(myFont), TRUE);
+
+	ShowWindow (hWnd_child, SW_SHOW); 
+    UpdateWindow (hWnd_child);
+	
+	if (!initGL())
+	{
+		//KillGLWindow();
+		MessageBox(NULL, "initGL() failed.", "ERRROR", MB_OK|MB_ICONEXCLAMATION);
+		KillGLWindow();
+		return FALSE;
+	}
+	SetForegroundWindow(hWnd);
+	SetFocus(hWnd);
+	return TRUE;
+}
+
+
+LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	switch(uMsg)
+	{
+	case WM_ACTIVATE:
+		if(!HIWORD(wParam))
+		{
+			active=TRUE;
+		}
+
+		else 
+		{
+			active=FALSE;
+		}
 		return 0;
+
+	case WM_SYSCOMMAND:
+		switch(wParam)
+		{
+		case SC_SCREENSAVE:
+		case SC_MONITORPOWER:
+			return 0;
+		}
+		break;
+
+	case WM_CLOSE:
+		{
+		PostQuitMessage(0);
+		return 0;
+		}
+
+	case WM_KEYDOWN:
+		{
+			keys[wParam]=TRUE;
+			return 0;
+		}
+	case WM_KEYUP:
+		{
+			keys[wParam]=FALSE;
+			return 0;
+		}
+	case WM_SIZE:
+		{
+			ResizeGLScene(LOWORD(lParam), HIWORD(lParam));
+		}
+	;
 	}
 
-	return 1;
+	/* the rest shall be passed to defwindowproc. (default window procedure) */
+	return DefWindowProc(hWnd, uMsg, wParam, lParam);
 }
 
 
-inline int handle_event(XEvent ev) {
-	switch(ev.type){
-		case KeyPress:
-			if (ev.xkey.keycode == KEY_ESC) { 
-				mouseLocked = !mouseLocked;
-				showCursor((int)!mouseLocked);
-			}
-			keys[ev.xkey.keycode] = true;
-			break;
-		case KeyRelease:
-			keys[ev.xkey.keycode] = false;
-			break;
-		case ButtonPress:
+LRESULT CALLBACK WndProc_child(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) { 
+	switch(uMsg)
+	{
+	case WM_VSCROLL:
+		   SendMessage(hWnd, EM_LINESCROLL, (WPARAM)wParam, (LPARAM)lParam);
 			break;
 	}
-	return 1;
-}
+	return DefWindowProc(hWnd, uMsg, wParam, lParam); }
 
-int main(int argc, char* argv[]) {
 
-	if (!createWindow()) { fprintf(stderr, "couldn't create window.\n"); exit(1); }
-	if (!initGL()) { fprintf(stderr, "Failed to initialize OpenGL.\n"); exit(1); }
-	if (!initCursor()) { fprintf(stderr, "Cursor initialization failed.\n"); exit(1); }
 
-	signal(SIGINT, signal_handler);
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
+	std::string cpustr(checkCPUCapabilities());
+	if (cpustr != "OK") { MessageBox(NULL, cpustr.c_str(), "Fatal error.", MB_OK); return -1; }
 
-	int c;
+	MSG msg;
+	BOOL done=FALSE;
+	fullscreen=FALSE;
+
+	if(!CreateGLWindow("opengl framework stolen from NeHe", WINDOW_WIDTH, WINDOW_HEIGHT, 32, fullscreen))
+	{
+		return 1;
+	}
+	
+	//ShowCursor(FALSE);
 
 	bool esc = false;
-
-	std::string cpustr(checkCPUCapabilities());
-	if (cpustr != "OK") { fprintf(stderr, "cpuid error (\"%s\")\n", cpustr.c_str()); return 1; }
-
-	bool done=false;
 	initializeStrings();
-
+	
 	_timer timer;
-
+	
 	while(!done)
 	{
-		while(XPending(dpy)) {
-			XNextEvent(dpy, &xev);
-			if (!handle_event(xev)) {
-				done = true;
+		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			if(msg.message == WM_QUIT)
+			{
+				done=TRUE;
+			}
+			else {
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
+			}
+		}
+		else {
+			if (active)
+			{
+				if(keys[VK_ESCAPE])
+				{
+					if (!esc) {
+						mouseLocked = !mouseLocked;
+						ShowCursor(mouseLocked ? FALSE : TRUE);
+						esc = true;
+					}
+					//done=TRUE;
+				}
+				else{
+					esc=false;
+
+					control();
+					update_c_pos();
+					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+					drawSpheres();
+					long us = timer.get_us();
+					double fps = 1000000/us;
+					static char buffer[128];
+					int l = sprintf(buffer, "%4.2f", fps);
+					buffer[l] = '\0';
+					std::string fps_str(buffer);
+
+					wpstring_holder::updateDynamicString(0, fps_str);
+					l = sprintf(buffer, "(%4.2f, %4.2f, %4.2f)", view_position(V::x), view_position(V::y), view_position(V::z));
+
+					buffer[l] = '\0';
+					std::string pos_str(buffer);
+					wpstring_holder::updateDynamicString(1, pos_str);
+	
+					drawText();
+
+				//	drawSkybox();
+
+					SwapBuffers(hDC);
+					timer.begin();
+				}
 			}
 		}
 
-		control();
-		update_c_pos();
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		drawSpheres();
-
-		long us = timer.get_us();
-		double fps = 1000000/us;
-		static char buffer[128];
-		int l = sprintf(buffer, "%4.2f", fps);
-		buffer[l] = '\0';
-		std::string fps_str(buffer);
-
-		wpstring_holder::updateDynamicString(0, fps_str);
-		l = sprintf(buffer, "(%4.2f, %4.2f, %4.2f)", view_position(V::x), view_position(V::y), view_position(V::z));
-		
-		buffer[l] = '\0';
-		std::string pos_str(buffer);
-		wpstring_holder::updateDynamicString(1, pos_str);
-
-		drawText();
-
-		glXSwapBuffers(dpy, win); 
-		timer.begin();
-
 	}
 
-	cleanup();
-
-	return 0;
-
+	KillGLWindow();
+	glDeleteBuffers(1, &IBOid);
+	return (msg.wParam);
 }
 

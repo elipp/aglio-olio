@@ -13,7 +13,7 @@ Texture::Texture(const std::string &filename, const GLint filter_param)
 	unsigned width, height;
 	unsigned error = lodepng::decode(raw_pixels, width, height, filename);
 	
-	if(error) { printf("lodepng decoder error: %s\n", lodepng_error_text(error)); _otherbad = true; return; }
+	if(error) { logWindowOutput( "lodepng decoder error: %s\n", lodepng_error_text(error)); _otherbad = true; return; }
 	
 	name = filename;
 
@@ -120,16 +120,16 @@ bool TextureBank::validate() {
 				const Texture &t = (*iter);
 				if (t.bad()) {
 					badvalues = true;
-					printf("[Textures] invalid textures detected:\n");
+					logWindowOutput( "[Textures] invalid textures detected:\n");
 					
 					if (t.badheader()) {
-						printf("%s: bad file header.\n", t.getName().c_str()); }
+						logWindowOutput( "%s: bad file header.\n", t.getName().c_str()); }
 					
 					else if (t.nosuch())
-						printf("%s: no such file or directory.\n", t.getName().c_str());
+						logWindowOutput( "%s: no such file or directory.\n", t.getName().c_str());
 
 					else if (t.otherbad())
-						printf("%s: file either is not square (n-by-n), or not power of two (128x128, 256x256 etc.)\n\n", t.getName().c_str());
+						logWindowOutput( "%s: file either is not square (n-by-n), or not power of two (128x128, 256x256 etc.)\n\n", t.getName().c_str());
 					}
 					
 			}

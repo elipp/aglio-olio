@@ -90,7 +90,7 @@ Example: if(!uivector_resizev(&frequencies_ll, 286, 0)) ERROR_BREAK(83);
 #define ERROR_BREAK(code) CERROR_BREAK(error, code)
 
 /*Set error var to the error code, and return it.*/
-#define CERROR_RETURN_ERROR(errorvar, code)\
+#define CERROR_RETURN_logWindowOutput(errorvar, code)\
 {\
   errorvar = code;\
   return code;\
@@ -3903,11 +3903,11 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
   LodePNGInfo* info = &state->info_png;
   if(insize == 0 || in == 0)
   {
-    CERROR_RETURN_ERROR(state->error, 48); /*error: the given data is empty*/
+    CERROR_RETURN_logWindowOutput(state->error, 48); /*error: the given data is empty*/
   }
   if(insize < 29)
   {
-    CERROR_RETURN_ERROR(state->error, 27); /*error: the data length is smaller than the length of a PNG header*/
+    CERROR_RETURN_logWindowOutput(state->error, 27); /*error: the data length is smaller than the length of a PNG header*/
   }
 
   /*when decoding a new PNG image, make sure all parameters created after previous decoding are reset*/
@@ -3917,11 +3917,11 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
   if(in[0] != 137 || in[1] != 80 || in[2] != 78 || in[3] != 71
      || in[4] != 13 || in[5] != 10 || in[6] != 26 || in[7] != 10)
   {
-    CERROR_RETURN_ERROR(state->error, 28); /*error: the first 8 bytes are not the correct PNG signature*/
+    CERROR_RETURN_logWindowOutput(state->error, 28); /*error: the first 8 bytes are not the correct PNG signature*/
   }
   if(in[12] != 'I' || in[13] != 'H' || in[14] != 'D' || in[15] != 'R')
   {
-    CERROR_RETURN_ERROR(state->error, 29); /*error: it doesn't start with a IHDR chunk!*/
+    CERROR_RETURN_logWindowOutput(state->error, 29); /*error: it doesn't start with a IHDR chunk!*/
   }
 
   /*read the values given in the header*/
@@ -3939,16 +3939,16 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
     unsigned checksum = lodepng_crc32(&in[12], 17);
     if(CRC != checksum)
     {
-      CERROR_RETURN_ERROR(state->error, 57); /*invalid CRC*/
+      CERROR_RETURN_logWindowOutput(state->error, 57); /*invalid CRC*/
     }
   }
 
   /*error: only compression method 0 is allowed in the specification*/
-  if(info->compression_method != 0) CERROR_RETURN_ERROR(state->error, 32);
+  if(info->compression_method != 0) CERROR_RETURN_logWindowOutput(state->error, 32);
   /*error: only filter method 0 is allowed in the specification*/
-  if(info->filter_method != 0) CERROR_RETURN_ERROR(state->error, 33);
+  if(info->filter_method != 0) CERROR_RETURN_logWindowOutput(state->error, 33);
   /*error: only interlace methods 0 and 1 exist in the specification*/
-  if(info->interlace_method > 1) CERROR_RETURN_ERROR(state->error, 34);
+  if(info->interlace_method > 1) CERROR_RETURN_logWindowOutput(state->error, 34);
 
   state->error = checkColorValidity(info->color.colortype, info->color.bitdepth);
   return state->error;
@@ -5641,15 +5641,15 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
 
   if(state->encoder.zlibsettings.windowsize > 32768)
   {
-    CERROR_RETURN_ERROR(state->error, 60); /*error: windowsize larger than allowed*/
+    CERROR_RETURN_logWindowOutput(state->error, 60); /*error: windowsize larger than allowed*/
   }
   if(state->encoder.zlibsettings.btype > 2)
   {
-    CERROR_RETURN_ERROR(state->error, 61); /*error: unexisting btype*/
+    CERROR_RETURN_logWindowOutput(state->error, 61); /*error: unexisting btype*/
   }
   if(state->info_png.interlace_method > 1)
   {
-    CERROR_RETURN_ERROR(state->error, 71); /*error: unexisting interlace mode*/
+    CERROR_RETURN_logWindowOutput(state->error, 71); /*error: unexisting interlace mode*/
   }
 
   state->error = checkColorValidity(info.color.colortype, info.color.bitdepth);
