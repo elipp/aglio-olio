@@ -1,14 +1,21 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 #include <fstream>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#ifdef __linux__
 #include <sys/time.h>
+#endif
 #include <GL/glew.h>
 #include <GL/gl.h>
+
+void logWindowOutput(const char* format, ...);
 
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
 
@@ -30,6 +37,51 @@
 	iter++ \
 
 
+#ifdef _WIN32
+class _timer {
+	double cpu_freq;	// in kHz
+	__int64 counter_start;
+	
+	__int64 get() {
+		LARGE_INTEGER li;
+		QueryPerformanceCounter(&li);
+		return li.QuadPart;
+	}
+public:
+
+	bool init() {
+		LARGE_INTEGER li;
+		if (!QueryPerformanceFrequency(&li)) {
+			logWindowOutput( "_timer: initialization failed.\n");
+			return false;
+		}
+		cpu_freq = double(li.QuadPart);	// in Hz. this is subject to dynamic frequency scaling, though
+
+		return true;
+	}
+	void begin() {
+		LARGE_INTEGER li;
+		QueryPerformanceCounter(&li);
+		counter_start = li.QuadPart;
+	}
+
+
+	inline double get_s() {	
+		return double(_timer::get()-_timer::counter_start)/_timer::cpu_freq;
+	}
+	inline double get_ms() {
+		return double(1000*(_timer::get_s()));
+	}
+	inline double get_us() {
+		return double(1000000*(_timer::get_s()));
+	}
+	_timer() {
+		if (!init()) { logWindowOutput("_timer error.\n"); }
+	}
+};
+
+
+#elif __linux__
 class _timer {
 
 	struct timespec beg;
@@ -58,6 +110,8 @@ public:
 		   memset(&end, 0, sizeof(struct timespec)); }
 
 };
+#endif
+
 
 
 size_t getfilesize(FILE *file);	

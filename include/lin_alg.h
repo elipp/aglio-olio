@@ -1,16 +1,26 @@
 #ifndef LIN_ALG_H
 #define LIN_ALG_H
 
+#ifdef _WIN32
+#include <intrin.h>
+#include <xmmintrin.h>
+#include <smmintrin.h>
+#elif __linux__
+#include <x86intrin.h>
+#endif
+
+#include <stdio.h>
 #include <cstring>
 #include <cmath>
-#include <iostream>
-#include <iomanip>
 #include <cstdio>
+
+#include "common.h"
 
 // http://stackoverflow.com/questions/11228855/header-files-for-simd-intrinsics
 
 // stolen from microsoft :(
 
+#ifndef _MM_TRANSPOSE4_PS
 #define _MM_TRANSPOSE4_PS(row0, row1, row2, row3) {                 \
             __m128 tmp3, tmp2, tmp1, tmp0;                          \
                                                                     \
@@ -24,8 +34,7 @@
             (row2) = _mm_shuffle_ps(tmp2, tmp3, 0x88);              \
             (row3) = _mm_shuffle_ps(tmp2, tmp3, 0xDD);              \
         }
-
-#include <x86intrin.h>
+#endif
 
 namespace V {
 	enum { x = 0, y = 1, z = 2, w = 3 };
@@ -37,11 +46,6 @@ typedef struct _cpuid_t {
 	int eax, ebx, ecx, edx;
 } cpuid_t;
 
-#define cpuid(func,cpuid_t_t)\
-	__asm__ __volatile__ ("cpuid":\
-	"=a" (cpuid_t_t.eax), "=b" (cpuid_t_t.ebx), "=c" (cpuid_t_t.ecx), "=d" (cpuid_t_t.edx) : "a" (func));
-
-
 const char* checkCPUCapabilities();
 
 // forward declarations 
@@ -51,28 +55,33 @@ class mat4;
 class Quaternion;
 
 union m128_f32_union {
-	__m128 v_t;
-	float f32[4];
+	__m128 m128;	// this is kinda.. bad. on windows, this results in a union within a union.
+	float m128_f32[4];
 	m128_f32_union(const __m128 a) {
-		v_t = a;
+		m128 = a;
 	}
+	m128_f32_union& operator=(const __m128 a) { m128 = a; return *this; }
 	m128_f32_union() {}
 };
 
+
+#ifdef _WIN32
+__declspec(align(16)) // to ensure 16-byte alignment in memory
+#endif
 class vec4 {		
 	m128_f32_union data;
 	static const vec4 zero_const;
 public:
 	vec4(const m128_f32_union &a) : data(a) {} ;
-	vec4(const __m128 a) { data.v_t = a;}
+	vec4(const __m128 a) { data = a; }
 	// this is necessary for the mat4 class calls
 	inline m128_f32_union getData() const { return data; }
 	vec4();	
 	vec4(float _x, float _y, float _z, float _w);	
 	vec4(const float * const a);
 
-	inline float& operator() (int row) { return data.f32[row]; }
-	inline float element(int row) const { return data.f32[row]; }
+	inline float& operator() (int row) { return data.m128_f32[row]; }
+	inline float element(int row) const { return data.m128_f32[row]; }
 
 	// see also: vec4 operator*(const float& scalar, vec4& v);
 
@@ -108,27 +117,47 @@ public:
 
 	void *operator new(size_t size) {
 		void *p;
+#ifdef _WIN32
+		p = _aligned_malloc(size, 16);
+#elif __linux__
 		posix_memalign(&p, 16, size);
+#endif
 		return p;
 	}
 	void *operator new[](size_t size) {
 		void *p;
+#ifdef _WIN32
+		p = _aligned_malloc(size, 16);
+#elif __linux__
 		posix_memalign(&p, 16, size);
+#endif
 		return p;
 	}
 
 	void operator delete(void *p) {
+#ifdef _WIN32
+		_aligned_free(p);
+#elif __linux__
 		vec4 *v = static_cast<vec4*>(p);	// the cast could be unnecessary
 		free(v);
+#endif
 	}
 
 	void operator delete[](void *p) {
+#ifdef _WIN32
+		_aligned_free(p);
+#elif __linux__
 		vec4 *v = static_cast<vec4*>(p);	// the cast could be unnecessary
 		free(v);
+#endif	// the cast could be unnecessary
 	}
 
 
-} __attribute__((aligned(16))); // to ensure 16-byte alignment in memory
+} 
+#ifdef __linux__
+__attribute__((aligned(16))) // to ensure 16-byte alignment in memory
+#endif
+;
 
 vec4 operator*(float scalar, const vec4& v);	// convenience overload :P
 // no operator/ for <scalar>/<vec4>, since the operation doesn't exist
@@ -146,6 +175,10 @@ float dot(const vec4 &a, const vec4 &b);
 
 vec4 cross(const vec4 &a,  const vec4 &b);	// not really vec4, since cross product for such vectors isn't defined
 
+
+#ifdef _WIN32
+__declspec(align(16)) // to ensure 16-byte alignment in memory
+#endif
 class mat4 {	// column major 
 
 	m128_f32_union data[4];	// each holds a column vector
@@ -153,8 +186,8 @@ class mat4 {	// column major
 
 public:
 
-	inline float& operator()(int column, int row) { return data[column].f32[row]; }
-	inline float elementAt(int column, int row) const { return data[column].f32[row]; }
+	inline float& operator()(int column, int row) { return data[column].m128_f32[row]; }
+	inline float elementAt(int column, int row) const { return data[column].m128_f32[row]; }
 	
 	mat4 operator* (const mat4 &R) const;
 	vec4 operator* (const vec4 &R) const;
@@ -212,12 +245,20 @@ public:
 
 	void *operator new(size_t size) {
 		void *p;
+#ifdef _WIN32
+		p = _aligned_malloc(size, 16);
+#elif __linux__
 		posix_memalign(&p, 16, size);
+#endif
 		return p;
 	}
 	void *operator new[](size_t size) {
 		void *p;
+#ifdef _WIN32
+		p = _aligned_malloc(size, 16);
+#elif __linux__
 		posix_memalign(&p, 16, size);
+#endif
 		return p;
 	}
 
@@ -230,10 +271,11 @@ public:
 		mat4 *m = static_cast<mat4*>(p);	// the cast could be unnecessary
 		free(m);
 	}
-
-
-	
-} __attribute__((aligned(16)));
+}
+#ifdef __linux__
+__attribute__((aligned(16))) // to ensure 16-byte alignment in memory
+#endif
+;
 
 mat4 operator*(float scalar, const mat4& m);
 
@@ -245,17 +287,19 @@ namespace Q {
 	enum {x = 0, y = 1, z = 2, w = 3};
 };
 
+#ifdef _WIN32
+__declspec(align(16)) // to ensure 16-byte alignment in memory
+#endif
 class Quaternion {
 	m128_f32_union data;
 public:
 
 	Quaternion(float x, float y, float z, float w);
-	Quaternion(const m128_f32_union d) : data(d) {} ;
-	Quaternion(const __m128 d) { data.v_t = d;};
+	Quaternion(const __m128 d) { data.m128 = d;};
 	Quaternion();
 	
-	inline float element(int i) const { return data.f32[i]; }
-	inline float& operator()(int i) { return data.f32[i]; }
+	inline float element(int i) const { return data.m128_f32[i]; }
+	inline float& operator()(int i) { return data.m128_f32[i]; }
 	
 	inline m128_f32_union getData() const { return data; }
 
@@ -282,27 +326,47 @@ public:
 
 	void *operator new(size_t size) {
 		void *p;
+#ifdef _WIN32
+		p = _aligned_malloc(size, 16);
+#elif __linux__
 		posix_memalign(&p, 16, size);
+#endif
 		return p;
 	}
 	void *operator new[](size_t size) {
 		void *p;
+#ifdef _WIN32
+		p = _aligned_malloc(size, 16);
+#elif __linux__
 		posix_memalign(&p, 16, size);
+#endif
 		return p;
 	}
 
 	void operator delete(void *p) {
+#ifdef _WIN32
+		_aligned_free(p);
+#elif __linux__
 		Quaternion *q = static_cast<Quaternion*>(p);	// the cast could be unnecessary
 		free(q);
+#endif
 	}
 
 	void operator delete[](void *p) {
+#ifdef _WIN32
+		_aligned_free(p);
+#elif __linux__
 		Quaternion *q = static_cast<Quaternion*>(p);	// the cast could be unnecessary
 		free(q);
+#endif
 	}
 
 
-} __attribute__((aligned(16)));
+} 
+#ifdef __linux__
+__attribute__((aligned(16)))
+#endif
+;
 
 Quaternion operator*(float scalar, const Quaternion &q);
 
