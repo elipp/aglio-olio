@@ -3,7 +3,7 @@ layout(triangles, equal_spacing, ccw) in;
 
 uniform mat4 Projection;
 uniform mat4 ModelView;
-uniform sampler2D HEIGHTMAP;
+uniform sampler2D height_map;
 
 layout (location = 0) in vec3 WorldPos_ES_in[];
 layout (location = 1) in vec3 Normal_ES_in[];
@@ -45,7 +45,7 @@ void main() {
 	vec3 disp_normal_transformed = normalize(inverse(transpose(mat3(ModelView)))*disp_normal);
 	Normal_GS_in = disp_normal_transformed;
 	
-	float hval = texture2D(HEIGHTMAP, vec2(TexCoord_GS_in.s, TexCoord_GS_in.t + 0.5)).x;	
+	float hval = texture2D(height_map, vec2(TexCoord_GS_in.s, TexCoord_GS_in.t + 0.5)).x;	
 	//if (hval > 0.08) { hval = hval + 0.1; }
 
 //	gl_Position = vec4(WorldPos_GS_in + 0.5*disp_normal_transformed*hval, 1.0);

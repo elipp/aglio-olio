@@ -1,6 +1,8 @@
 #ifndef SHADER_H
 #define SHADER_H
 
+#include <Windows.h>
+#define GLEW_STATIC 
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <fstream>
@@ -21,7 +23,11 @@ typedef enum {
 		FragmentShader = 4
 };
 
-
+#define set_bad() do {\
+	bad = true;\
+	logWindowOutput("Program %s: bad flag set @ %s:%d\n", id_string.c_str(), __FILE__, __LINE__);\
+} while(0)\
+	
 class ShaderProgram {
 	std::unordered_map<std::string, GLuint> uniforms;	// uniform name -> uniform location
 	std::string id_string;

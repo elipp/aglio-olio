@@ -10,6 +10,7 @@
 #include <signal.h>
 
 #include <Windows.h>
+#define GLEW_STATIC 
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
@@ -338,6 +339,30 @@ int initGL(void)
 		logWindowOutput( "Error: %s\n", glewGetErrorString(err));
 	}
 
+	logWindowOutput( "OpenGL version: %s\n", glGetString(GL_VERSION));
+	logWindowOutput( "GLSL version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+
+	logWindowOutput( "Loading models...");
+	GLuint sphere_facecount;
+	GLuint sphere_VBOid = loadNewestBObj("models/maapallo_napa_korjattu.bobj", &sphere_facecount);
+	skybox_VBOid = loadNewestBObj("models/skybox.bobj", &skybox_facecount);
+	logWindowOutput( "done.\n");
+
+	logWindowOutput( "Loading textures...");
+	indices = generateIndices();
+	TextureBank::add(Texture("textures/EarthTexture.jpg", GL_LINEAR));
+	TextureBank::add(Texture("textures/earth_height_normal_map.jpg", GL_LINEAR));
+	TextureBank::add(Texture("textures/dina_all.png", GL_NEAREST));
+	logWindowOutput( "done.\n");
+	
+	if (!TextureBank::validate()) {
+		logWindowOutput( "Error: failed to validate TextureBank (fatal).\n");
+		return 0;
+	}
+	earth_tex_id = TextureBank::get_id_by_name("textures/EarthTexture.jpg");
+	hmap_id = TextureBank::get_id_by_name("textures/earth_height_normal_map.jpg");
+	Text::texId = TextureBank::get_id_by_name("textures/dina_all.png");
+	
 	regular_shader = new ShaderProgram("shaders/regular"); 
 	normal_plot_shader = new ShaderProgram("shaders/normalplot");
 	text_shader = new ShaderProgram("shaders/text_shader");
@@ -348,30 +373,6 @@ int initGL(void)
 		return 0; 
 	}
 
-	logWindowOutput( "Loading models...");
-	GLuint sphere_facecount;
-	GLuint sphere_VBOid = loadNewestBObj("models/maapallo_napa_korjattu.bobj", &sphere_facecount);
-	skybox_VBOid = loadNewestBObj("models/skybox.bobj", &skybox_facecount);
-	logWindowOutput( "done.\n");
-
-	logWindowOutput( "Loading textures...");
-	indices = generateIndices();
-	TextureBank::add(Texture("textures/EarthTexture.png", GL_LINEAR));
-	TextureBank::add(Texture("textures/earth_height_normal_map.png", GL_LINEAR));
-	TextureBank::add(Texture("textures/dina_all.png", GL_NEAREST));
-	logWindowOutput( "done.\n");
-
-	earth_tex_id = TextureBank::get_id_by_name("textures/EarthTexture.png");
-	hmap_id = TextureBank::get_id_by_name("textures/earth_height_normal_map.png");
-	Text::texId = TextureBank::get_id_by_name("textures/dina_all.png");
-
-	if (!TextureBank::validate()) {
-		logWindowOutput( "Error: failed to validate TextureBank (fatal).\n");
-		return 0;
-	}
-
-	logWindowOutput( "OpenGL version: %s\n", glGetString(GL_VERSION));
-	logWindowOutput( "GLSL version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
 	glGenBuffers(1, &IBOid);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOid);
@@ -593,7 +594,7 @@ void drawSpheres()
 	
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, hmap_id);	// heightmap
-	regular_shader->update_uniform_1i("heightmap", 1);
+	regular_shader->update_uniform_1i("height_map", 1);
 
 	glDisable(GL_BLEND);
 	glDrawElements(GL_PATCHES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
@@ -795,20 +796,25 @@ void logWindowOutput(const char *format, ...) {
 	va_start(args, format);
 	SYSTEMTIME st;
     GetSystemTime(&st);
-	std::string *converted = convertLF_to_CRLF(format);
 	std::size_t timestamp_len = sprintf(msg_buf, "%02d:%02d:%02d.%03d > ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
-	std::size_t msg_len = vsprintf(msg_buf + timestamp_len, converted->c_str(), args);
+	std::size_t msg_len = vsprintf(msg_buf + timestamp_len, format, args);
 	std::size_t total_len = timestamp_len + msg_len;
-	msg_buf[total_len] = '\0';	// windows newline (CR LF)
-	delete converted;
+	msg_buf[total_len] = '\0';
+	std::string *converted = convertLF_to_CRLF(msg_buf);
+
     va_end(args);
 	int nLength = GetWindowTextLength(hWnd_child); 
    SendMessage(hWnd_child, EM_SETSEL, (WPARAM)nLength, (LPARAM)nLength);
-   SendMessage(hWnd_child, EM_REPLACESEL, (WPARAM)FALSE, (LPARAM)msg_buf);
+   SendMessage(hWnd_child, EM_REPLACESEL, (WPARAM)FALSE, (LPARAM)converted->c_str());
    SendMessage(hWnd_child, EM_SCROLLCARET, (WPARAM)0, (LPARAM)0);
-   
+   	delete converted;
 }
 
+static void clearLogWindow() {
+	int nLength = GetWindowTextLength(hWnd_child); 
+   SendMessage(hWnd_child, EM_SETSEL, (WPARAM)0, (LPARAM)nLength);
+   SendMessage(hWnd_child, EM_REPLACESEL, (WPARAM)FALSE, (LPARAM)NULL);
+}
 
 BOOL CreateGLWindow(char* title, int width, int height, int bits, bool fullscreenflag)
 {
@@ -1003,7 +1009,9 @@ BOOL CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 
 	ShowWindow (hWnd_child, SW_SHOW); 
     UpdateWindow (hWnd_child);
-	
+	// clear log window
+	clearLogWindow();
+
 	if (!initGL())
 	{
 		//KillGLWindow();
@@ -1077,7 +1085,8 @@ LRESULT CALLBACK WndProc_child(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 		   SendMessage(hWnd, EM_LINESCROLL, (WPARAM)wParam, (LPARAM)lParam);
 			break;
 	}
-	return DefWindowProc(hWnd, uMsg, wParam, lParam); }
+	return DefWindowProc(hWnd, uMsg, wParam, lParam); 
+}
 
 
 

@@ -1,92 +1,146 @@
 ﻿#include "texture.h"
 #include "lodepng.h"
+#include "jpeglib.h"
+#include <cstdio>
+
+static int loadJPEG(const std::string &filename, unsigned char **out_buffer, unsigned *width, unsigned *height) {
+
+  struct jpeg_decompress_struct cinfo;
+
+  struct jpeg_error_mgr jerr;
+  /* More stuff */
+  FILE* infile;		/* source file */
+  JSAMPROW *buffer;
+  int row_stride;		/* physical row width in output buffer */
+	
+  if ((infile = fopen(filename.c_str(), "rb")) == NULL) {
+    fprintf(stderr, "can't open %s\n", filename.c_str());
+    return 0;
+  }
+
+  /* Step 1: allocate and initialize JPEG decompression object */
+
+  cinfo.err = jpeg_std_error(&jerr);
+  /* Establish the setjmp return context for my_error_exit to use. */
+
+  /* Now we can initialize the JPEG decompression object. */
+  jpeg_create_decompress(&cinfo);
+
+  /* Step 2: specify data source (eg, a file) */
+  jpeg_stdio_src(&cinfo, infile);
+
+  /* Step 3: read file parameters with jpeg_read_header() */
+
+  (void) jpeg_read_header(&cinfo, TRUE);
+  /* Step 5: Start decompressor */
+
+  (void) jpeg_start_decompress(&cinfo);
+
+  /* JSAMPLEs per row in output buffer */
+  row_stride = cinfo.output_width * cinfo.output_components;
+  unsigned total_bytes = (cinfo.output_width*cinfo.output_components)*(cinfo.output_height*cinfo.output_components);
+  *out_buffer = new unsigned char[total_bytes];
+  /* Make a one-row-high sample array that will go away when done with image */
+  buffer = (*cinfo.mem->alloc_sarray)
+		((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
+
+  /* Step 6: while (scan lines remain to be read) */
+  /*           jpeg_read_scanlines(...); */
+
+  /* Here we use the library's state variable cinfo.output_scanline as the
+   * loop counter, so that we don't have to keep track ourselves.
+   */
+  unsigned char* outbuf_iter = *out_buffer;
+  while (cinfo.output_scanline < cinfo.output_height) {
+    (void) jpeg_read_scanlines(&cinfo, buffer, 1);
+    /* Assume put_scanline_someplace wants a pointer and sample count. */
+    //put_scanline_someplace(buffer[0], row_stride);
+	memcpy(outbuf_iter, buffer[0], row_stride);
+	outbuf_iter += row_stride;
+  }
+
+  /* Step 7: Finish decompression */
+  (void) jpeg_finish_decompress(&cinfo);
+
+  /* Step 8: Release JPEG decompression object */
+  jpeg_destroy_decompress(&cinfo);
+
+  fclose(infile);
+  *width = cinfo.image_width;
+  *height = cinfo.image_height;
+  return 1;
+
+}
 
 
-Texture::Texture(const std::string &filename, const GLint filter_param)
+static int loadPNG(const std::string &filename, unsigned char **out, unsigned *width, unsigned *height) {
+	return (lodepng_decode32_file(out, width, height, filename.c_str()) == 0); // 0 means no error
+	// TODO need to free the buffers!!
+}
+
+
+static std::string get_file_extension(const std::string &filename) {
+	int i = 0;
+	size_t fn_len = filename.length();
+	while (i < fn_len && filename[i] != '.') {
+		++i;
+	}
+	std::string ext = filename.substr(i+1, filename.length() - (i+1));
+	//logWindowOutput("get_file_extension: \"%s\"\n", ext.c_str());
+	return ext;
+}
+Texture::Texture(const std::string &filename, const GLint filter_param) : name(filename)
 {
 
 	//haidi haida. oikea kurahaara ja jakorasia.
 
-	// LODEPNG STUFF!
-
-	std::vector<unsigned char> raw_pixels;
+	unsigned char *buffer;
 	unsigned width, height;
-	unsigned error = lodepng::decode(raw_pixels, width, height, filename);
 	
-	if(error) { logWindowOutput( "lodepng decoder error: %s\n", lodepng_error_text(error)); _otherbad = true; return; }
+	std::string ext = get_file_extension(filename);
+	if (ext == "jpg" || ext == "jpeg") {
+		hasAlpha = false;
+		if (!loadJPEG(filename, &buffer, &width, &height)) {
+			logWindowOutput("Texture: fatal error: loading file %s failed.\n", filename.c_str());
+			_otherbad = true;
+		}
 	
-	name = filename;
-
-	/*std::ifstream infile(filename, std::ios::in | std::ios::binary);
-
-	if (!infile.is_open()) {
-		_nosuch = true;
-		return;
 	}
-
-	char *buffer = NULL;
-
-	decompress_qlz(infile, &buffer);
-	infile.close();
+	else if (ext == "png") {
+		hasAlpha = true;
+		if(!loadPNG(filename, &buffer, &width, &height)) {
+			logWindowOutput("Texture: fatal error: loading file %s failed.\n", filename.c_str());
+			_otherbad=true;
+		}
+	} else {
+		logWindowOutput("Texture: fatal error: unsupported image format \"%s\" (only PNG/JPG are supported)\n", ext.c_str());
+		_otherbad = true; 
+		return; 
+	}
 	
 	_badheader = _nosuch = _otherbad = false;
-	
-	if (!((*buffer) == 'B' && (*(buffer+1) == 'M')))
-	{
-		delete [] buffer;
-		_badheader = true;
-		return;
-	}
-	*/
-	
-	_badheader = _nosuch = _otherbad = false;
-	// start reading header file.
 
-	// the windows BMP file has a 54-byte header
-
-	/*char* iter = buffer + 2;	// the first two bytes are 'B' and 'M', and this we already have checked.
-
-	BMPHEADER header;
-
-	memcpy(&header, iter, sizeof(header));
-	
-	// validate image OpenGL-wise
-
-	if (header.width == header.height) 
-	{
-		if ((header.width & (header.width - 1)) == 0)	// if power of two
-		{ */
 	if ((width & (width - 1)) == 0 && width == height) {
 			// image is valid, carry on
-			hasAlpha = true;	// lodepng loads as RGBARGBA...
-
-			// read actual image data to buffer.
-		//	GLbyte *const imagedata = (GLbyte*)(buffer + 54);
+			GLint internalfmt = hasAlpha ? GL_RGBA8 : GL_RGB8;
+			GLint texSubfmt = hasAlpha ? GL_RGBA : GL_RGB;
 			glEnable(GL_TEXTURE_2D);
 			glGenTextures(1, &textureId);
 			glBindTexture( GL_TEXTURE_2D, textureId);
-			glTexStorage2D(GL_TEXTURE_2D, 4, GL_RGBA8, width, height);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, &raw_pixels[0]);
+			glTexStorage2D(GL_TEXTURE_2D, 4, internalfmt, width, height);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, texSubfmt, GL_UNSIGNED_BYTE, (const GLvoid*)&buffer[0]);
 			glGenerateMipmap(GL_TEXTURE_2D);	// requires glew
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter_param);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-
-			//glTexImage2D( GL_TEXTURE_2D, 0, 3, width, height, 0, GL_BGR_EXT, GL_UNSIGNED_BYTE, imagedata);
-			//glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
-			
-			//glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR );
-
-
-			//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
 		}
 	
 		else {	// if not power of two
 			_otherbad = true;
 		}
+
+		//free(buffer);
 }
 
 	/*****
@@ -114,12 +168,12 @@ void TextureBank::add(const Texture &t) {
 bool TextureBank::validate() {
 			
 			std::vector<Texture>::const_iterator iter;
-			bool badvalues = false;
+			bool all_good = true;
 			for(iter = textures.begin(); iter != textures.end(); ++iter)
 			{	
 				const Texture &t = (*iter);
 				if (t.bad()) {
-					badvalues = true;
+					all_good = false;
 					logWindowOutput( "[Textures] invalid textures detected:\n");
 					
 					if (t.badheader()) {
@@ -134,7 +188,7 @@ bool TextureBank::validate() {
 					
 			}
 
-			return !badvalues;
+			return all_good;
 }
 
 

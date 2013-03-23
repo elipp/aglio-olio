@@ -7,11 +7,6 @@ static char logbuffer[1024];
 #define RED_BOLD "\033[1;31m"
 #define COLOR_RESET "\033[0m"
 
-#define set_bad() do {\
-	bad = true;\
-	logWindowOutput("Program %s: bad flag set @ %s:%d\n", id_string, __FILE__, __LINE__);\
-} while(0)\
-	
 ShaderProgram::ShaderProgram(const std::string &name_base) { 	
 
 	for (int i = 0; i < 5; i++) shaderObjIDs[i] = SHADER_NONE;	

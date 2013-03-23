@@ -39,5 +39,5 @@ void main(void)
 	}
 	
 	out_frag_color = clamp((0.1*texColor + diffuse*vec4(1.0, 1.0, 1.0, 1.0)*pow(spec, 5.5) + diffuse * texColor), 0.0, 1.0);
-
+	//out_frag_color = vec4(1.0);
 }
