@@ -177,7 +177,7 @@ vec4 cross(const vec4 &a,  const vec4 &b);	// not really vec4, since cross produ
 
 
 #ifdef _WIN32
-__declspec(align(16)) // to ensure 16-byte alignment in memory
+__declspec(align(64)) // to ensure 16-byte alignment in memory
 #endif
 class mat4 {	// column major 
 
@@ -188,7 +188,17 @@ public:
 
 	inline float& operator()(int column, int row) { return data[column].m128_f32[row]; }
 	inline float elementAt(int column, int row) const { return data[column].m128_f32[row]; }
-	
+
+	static mat4 identity() { return identity_const; }
+	static mat4 scale(const vec4 &v);
+	static mat4 translation(const vec4 &v);
+
+	static mat4 proj_ortho(float left, float right, float bottom, float top, float zNear, float zFar);
+	static mat4 proj_persp(float left, float right, float bottom, float top, float zNear, float zFar);
+
+	static mat4 proj_persp(float fov_radians, float aspect, float zNear, float zFar); 	// gluPerspective-like
+
+	// mat4::operator*= was chosen to be left unimplemented, since matrix multiplication isn't associative.
 	mat4 operator* (const mat4 &R) const;
 	vec4 operator* (const vec4 &R) const;
 	
@@ -205,8 +215,6 @@ public:
 	mat4(const __m128& c1, const __m128& c2, const __m128& c3, const __m128& c4);
 
 	void zero();
-	void identity();
-
 
 	void transpose();
 	mat4 transposed() const;
@@ -214,6 +222,7 @@ public:
 	void invert();
 	mat4 inverted() const;
 	
+
 	// T(): benchmarking results for 100000000 iterations:
 	//
 	// SSE (microsoft macro _MM_TRANSPOSE4_PS):
@@ -232,15 +241,8 @@ public:
 	void printRaw() const;	// prints elements in actual memory order.
 
 	void print();
-	static mat4 proj_ortho(float left, float right, float bottom, float top, float zNear, float zFar);
-	static mat4 proj_persp(float left, float right, float bottom, float top, float zNear, float zFar);
-	// gluPerspective-esque
-	static mat4 proj_persp(float fov_radians, float aspect, float zNear, float zFar);
 
 	friend mat4 operator*(float scalar, const mat4& m);
-
-	static mat4 scale(const vec4 &v);
-	static mat4 translation(const vec4 &v);
 
 	void *operator new(size_t size) {
 		void *p;

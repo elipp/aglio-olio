@@ -13,10 +13,10 @@ static const int mask3021 = 0xC9, // 11 00 10 01_2
 static float (*MM_DPPS_XYZ)(__m128 a, __m128 b);
 static float (*MM_DPPS_XYZW)(__m128 a, __m128 b);
 
-//static const float identity_arr[16] = { 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 };
+static const float identity_arr[] = { 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 };
 
 const vec4 vec4::zero_const = vec4(ZERO);
-const mat4 mat4::identity_const = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+const mat4 mat4::identity_const = mat4(identity_arr);
 
 static inline float MM_DPPS_XYZ_SSE(__m128 a, __m128 b) {
 	const m128_f32_union mul = _mm_mul_ps(a, b);
@@ -63,23 +63,21 @@ const char* checkCPUCapabilities() {
 #elif __linux__
 	cpuid(0x1, c);
 #endif
-
-#define SSE_BIT_ENABLED ((c.edx & 0x02000000) == 0x02000000) // register edx, bit 25
-#define SSE3_BIT_ENABLED ((c.ecx & 0x00000001) == 0x00000001) // register ecx, bit 0
-#define SSE41_BIT_ENABLED ((c.ecx & 0x00080000) == 0x00080000) // register ecx, bit 19
-	
+#define SSE_BITMASK 0x02000000 // register edx, bit 25
+#define SSE3_BITMASK 0x00000000 // register ecx, bit 0
+#define SSE41_BITMASK 0x00080000 // register ecx, bit 19
 	logWindowOutput( "cpuid results: %x %x %x %x\n", c.eax, c.ebx, c.ecx, c.edx);
 
-	if (!SSE_BIT_ENABLED) {
+	if ((c.edx & SSE_BITMASK) != SSE_BITMASK) {
 		return "ERROR: SSE not supported by host processor!";
 	}
-	else if (!SSE3_BIT_ENABLED) {
+	else if ((c.ecx & SSE3_BITMASK) != SSE3_BITMASK) {
 		MM_DPPS_XYZ = MM_DPPS_XYZ_SSE;
 		MM_DPPS_XYZW = MM_DPPS_XYZW_SSE;
-		return "NOTE: lin_alg: SSE3 not supported by host processor. Using SSE(1) for dot product computation.\n";
+		return "NOTE: lin_alg: Using SSE for dot product computation.\n";
 	}
 	
-	else if (!SSE41_BIT_ENABLED) {
+	else if ((c.ecx & SSE41_BITMASK) != SSE41_BITMASK) {
 		MM_DPPS_XYZ = MM_DPPS_XYZ_SSE3;
 		MM_DPPS_XYZW = MM_DPPS_XYZW_SSE3;
 		return "NOTE: lin_alg: SSE4.1 not supported by host processor. Using SSE3 hadd for dot product computation.\n";
@@ -226,10 +224,10 @@ void mat4::print() {
 	mat4 &M = (*this);
 	for (int i = 0; i < 4; i++) {
 		for (int j = 0; j < 4; j++)
-			printf("%4.3f ", M.elementAt(j,i));
-		printf("\n");
+			logWindowOutput("%4.3f ", M.elementAt(j,i));
+		logWindowOutput("\n");
 	}
-	printf("\n");
+	logWindowOutput("\n");
 
 }
 
@@ -409,14 +407,9 @@ mat4 operator*(float scalar, const mat4& m) {
 
 }
 
+
 void mat4::zero() {
 	data[0] = data[1] = data[2] = data[3] = ZERO;
-}
-
-
-void mat4::identity() {
-	// better design than to do (*this)(0,0) = 1.0 etc
-	(*this) = identity_const;
 }
 
 
@@ -481,8 +474,7 @@ mat4 mat4::proj_ortho(float left, float right, float bottom, float top, float zN
 	// i.e. that any matrix elements other than the ones used in
 	// a pure orthographic projection matrix are zero.
 		
-	//mat4 M = mat4::identity();
-	mat4 M; M.identity();
+	mat4 M = mat4::identity();
 	
 	M(0,0) = 2.0/(right - left);
 	M(1,1) = 2.0/(top - bottom);
@@ -498,8 +490,8 @@ mat4 mat4::proj_ortho(float left, float right, float bottom, float top, float zN
 mat4 mat4::proj_persp(float left, float right, float bottom, float top, float zNear, float zFar) {
 		
 
-	mat4 M;// = mat4::identity();
-	M.identity();
+	mat4 M = mat4::identity();
+
 	M(0,0) = (2*zNear)/(right-left);
 	M(1,1) = (2*zNear)/(top-bottom);
 	M(2,0) = (right+left)/(right-left);

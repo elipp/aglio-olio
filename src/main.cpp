@@ -215,7 +215,7 @@ GLvoid ResizeGLScene(GLsizei width, GLsizei height)		// Resize And Initialize Th
 
 static GLuint skybox_VBOid;
 static GLuint skybox_facecount;
-static mat4 skyboxmat(MAT_IDENTITY);
+static mat4 skyboxmat = mat4(MAT_IDENTITY);
 
 inline double rand01() {
 	return (double)rand()/(double)RAND_MAX;
@@ -398,15 +398,14 @@ int initGL(void)
 	glEnableVertexAttribArray(1);
 	glEnableVertexAttribArray(2);
 
-	/* shader error checking */
 
-	// view is initialized to zero by default, so it needs to be identity'ed :DD::DCXD
-	view.identity();
+	view = mat4(MAT_IDENTITY);
 
-	projection.make_proj_perspective(M_PI/8.0, (float)WINDOW_WIDTH/(float)WINDOW_HEIGHT, 2.0, 1000.0);
+	projection = mat4::proj_persp(M_PI/8.0, (float)WINDOW_WIDTH/(float)WINDOW_HEIGHT, 2.0, 1000.0);
 
-	Text::Projection.make_proj_orthographic(0.0, WINDOW_WIDTH, WINDOW_HEIGHT, 0.0, -1.0, 1.0);
-	Text::ModelView.identity();
+	Text::Projection = mat4::proj_ortho(0.0, WINDOW_WIDTH, WINDOW_HEIGHT, 0.0, -1.0, 1.0);
+	
+	Text::ModelView = mat4(MAT_IDENTITY);
 
 	view_position = vec4(0.0, 0.0, 0.0, 1.0);
 	cameraVel = vec4(0.0, 0.0, 0.0, 1.0);
@@ -533,7 +532,6 @@ void calculateCollision(Model *a, Model *b) {
 
 void drawSpheres()
 {
-
 	glPolygonMode(GL_FRONT_AND_BACK, PMODE);
 	glUseProgram(regular_shader->getProgramHandle());	
 
@@ -1093,17 +1091,14 @@ LRESULT CALLBACK WndProc_child(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
 	std::string cpustr(checkCPUCapabilities());
-	if (cpustr != "OK") { MessageBox(NULL, cpustr.c_str(), "Fatal error.", MB_OK); return -1; }
+	if (cpustr.find("ERROR") != std::string::npos) { MessageBox(NULL, cpustr.c_str(), "Fatal error.", MB_OK); return -1; }
 
 	MSG msg;
 	BOOL done=FALSE;
-	fullscreen=FALSE;
 
-	if(!CreateGLWindow("opengl framework stolen from NeHe", WINDOW_WIDTH, WINDOW_HEIGHT, 32, fullscreen))
-	{
-		return 1;
-	}
+	if(!CreateGLWindow("opengl framework stolen from NeHe", WINDOW_WIDTH, WINDOW_HEIGHT, 32, (fullscreen=FALSE))) { return 1; }
 	
+	logWindowOutput("%s\n", cpustr.c_str());
 	//ShowCursor(FALSE);
 
 	bool esc = false;
@@ -1158,8 +1153,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 					wpstring_holder::updateDynamicString(1, pos_str);
 	
 					drawText();
-
-				//	drawSkybox();
 
 					SwapBuffers(hDC);
 					timer.begin();
