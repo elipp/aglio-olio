@@ -3,7 +3,7 @@
 Model::Model(float m, float s, GLuint _VBOid, GLuint texId, GLuint _facecount, bool lightsrc, bool _fixed_pos) 
 	: mass(m), scale(s), VBOid(_VBOid), facecount(_facecount), textureId(texId), is_a_lightsrc(lightsrc), fixed_pos(_fixed_pos) { 
 	
-		model_matrix.identity();
+		model_matrix = mat4::identity();
 		model_matrix = scale*model_matrix;
 		model_matrix(3, 3) = 1.0;
 		// no need to initialize Quaternion rotation, because

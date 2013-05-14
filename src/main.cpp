@@ -219,29 +219,19 @@ void initializeStrings() {
 	// NOTE: it wouldn't be such a bad idea to just take in a vector 
 	// of strings, and to generate one single static VBO for them all.
 
-	std::string string1 = "aglio-olio :D:DD: (biatch)";
-	wpstring_holder::append(wpstring(string1, 15, 15), WPS_STATIC);
-
-	std::string frames("Frames per second: ");
-	wpstring_holder::append(wpstring(frames, WINDOW_WIDTH-180, WINDOW_HEIGHT-20), WPS_STATIC);
+	wpstring_holder::append(wpstring("aglio-olio :D:DD: (biatch)", 15, 15), WPS_STATIC);
+	wpstring_holder::append(wpstring("Frames per second: ", WINDOW_WIDTH-180, WINDOW_HEIGHT-20), WPS_STATIC);
 
 	// reserved index 2 for FPS display. 
-	std::string initialfps = "00.00";
+	const std::string initialfps = "00.00";
 	wpstring_holder::append(wpstring(initialfps, WINDOW_WIDTH-50, WINDOW_HEIGHT-20), WPS_DYNAMIC);
 	wpstring_holder::append(wpstring("Camera pos: ", 20, WINDOW_HEIGHT-20), WPS_STATIC);
 	wpstring_holder::append(wpstring("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 102, WINDOW_HEIGHT-20), WPS_DYNAMIC);
 	
-	const std::string help2("'p' for polygonmode toggle.");
-	wpstring_holder::append(wpstring(help2, WINDOW_WIDTH-220, 35), WPS_STATIC);
-
-	const std::string help3("'n' for normal plot toggle.");
-	wpstring_holder::append(wpstring(help3, WINDOW_WIDTH-220, 50), WPS_STATIC);
-	
-	const std::string help4("'t' for atmosphere toggle.");
-	wpstring_holder::append(wpstring(help4, WINDOW_WIDTH-220, 65), WPS_STATIC);
-
-	const std::string help5("'ESC' to lock/unlock mouse.");
-	wpstring_holder::append(wpstring(help5, WINDOW_WIDTH-220, 80), WPS_STATIC);
+	wpstring_holder::append(wpstring("'p' for polygonmode toggle.", WINDOW_WIDTH-220, 35), WPS_STATIC);
+	wpstring_holder::append(wpstring("'n' for normal plot toggle.", WINDOW_WIDTH-220, 50), WPS_STATIC);
+	wpstring_holder::append(wpstring("'t' for atmosphere toggle.", WINDOW_WIDTH-220, 65), WPS_STATIC);
+	wpstring_holder::append(wpstring("'ESC' to lock/unlock mouse.", WINDOW_WIDTH-220, 80), WPS_STATIC);
 
 	wpstring_holder::createBufferObjects();
 
@@ -315,7 +305,8 @@ int initGL(void)
 
 	logWindowOutput( "Loading models...");
 	GLuint sphere_facecount;
-	GLuint sphere_VBOid = loadNewestBObj("models/maapallo_napa_korjattu.bobj", &sphere_facecount);
+	//GLuint sphere_VBOid = loadNewestBObj("models/rengas.bobj", &sphere_facecount);
+	GLuint sphere_VBOid = loadNewestBObj("models/auto.bobj", &sphere_facecount);
 	skybox_VBOid = loadNewestBObj("models/skybox.bobj", &skybox_facecount);
 	logWindowOutput( "done.\n");
 
@@ -334,7 +325,7 @@ int initGL(void)
 	hmap_id = TextureBank::get_id_by_name("textures/earth_height_normal_map.jpg");
 	Text::texId = TextureBank::get_id_by_name("textures/dina_all.png");
 	
-	regular_shader = new ShaderProgram("shaders/regular"); 
+	regular_shader = new ShaderProgram("shaders/chassis"); 
 	normal_plot_shader = new ShaderProgram("shaders/normalplot");
 	text_shader = new ShaderProgram("shaders/text_shader");
 	atmosphere_shader = new ShaderProgram("shaders/atmosphere");
@@ -370,7 +361,8 @@ int initGL(void)
 	glEnableVertexAttribArray(2);
 
 
-	view = mat4(MAT_IDENTITY);
+	//view = mat4(MAT_IDENTITY);
+	view = mat4::identity();
 
 	projection = mat4::proj_persp(M_PI/8.0, (float)WINDOW_WIDTH/(float)WINDOW_HEIGHT, 2.0, 1000.0);
 
@@ -433,7 +425,6 @@ int initGL(void)
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), BUFFER_OFFSET(0));
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), BUFFER_OFFSET(3*sizeof(float)));
 	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), BUFFER_OFFSET(6*sizeof(float)));
-
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOid);
 
@@ -552,22 +543,22 @@ void drawSpheres()
 		light_dir.normalize();
 		regular_shader->update_uniform_vec4("light_dir", (const GLfloat*)light_dir.rawData());
 	//}
-	regular_shader->update_uniform_1f("TESS_LEVEL_INNER", tess_level_inner); 
-	regular_shader->update_uniform_1f("TESS_LEVEL_OUTER", tess_level_outer);
-	regular_shader->update_uniform_1i("lightsrc", current->lightsrc());
+//	regular_shader->update_uniform_1f("TESS_LEVEL_INNER", tess_level_inner); 
+//	regular_shader->update_uniform_1f("TESS_LEVEL_OUTER", tess_level_outer);
+//	regular_shader->update_uniform_1i("lightsrc", current->lightsrc());
 
 	glBindBuffer(GL_ARRAY_BUFFER, (*current).getVBOid());
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, (*current).getTextureId());
 	regular_shader->update_uniform_1i("texture_color", 0);
 	
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, hmap_id);	// heightmap
-	regular_shader->update_uniform_1i("height_map", 1);
+	//glActiveTexture(GL_TEXTURE1);
+	//glBindTexture(GL_TEXTURE_2D, hmap_id);	// heightmap
+	//regular_shader->update_uniform_1i("height_map", 1);
 
 	glDisable(GL_BLEND);
-	glDrawElements(GL_PATCHES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
-
+//	glDrawElements(GL_PATCHES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
+	glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
 	// draw atmosphere
 
 	if (show_atmosphere) {
@@ -583,114 +574,6 @@ void drawSpheres()
 		glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
 	}
 
-	/*for (; current != models.end(); ++current)
-	{
-		//vec4 acceleration(0.0, 0.0, 0.0, 0.0);	// is initialized to zero by default though
-		vec4 acceleration;
-		static std::vector<Model>::const_iterator iter = models.begin();
-		iter = models.begin();
-
-		while(iter != models.end()) {
-
-			if (iter != current) {
-				vec4 r = (*iter).position - (*current).position;
-
-				const float distance = r.length3();
-				//printf("distance: %f\n", distance);
-
-				if (fabs(distance) < (*iter).radius + (*current).radius) {
-
-					if ((*current).velocity.length3() + (*iter).velocity.length3() < 0.5) {
-						//(*current).velocity.zero();
-					}
-					else {
-						//printf("COLLISION\n");
-						const vec4 r_unit = r.normalized();
-						vec4 p1 = (*current).mass * (*current).velocity;
-						//vec4 p2 = (*iter)->mass * (*iter)->velocity;
-
-						vec4 n_p1 = -(dot(p1, r)/(distance*distance))*r_unit;
-						//				vec4 n_p2 = (p2.dot(r)/(distance*distance))*r_unit;
-
-						// approximation; has its flaws 
-						//	(*current).velocity = (2*n_p1 + p1)/(*current).mass; ***
-
-						//	printVector4f(p1 + p2);			
-						//printVector4f(n_p1 + n_p2);
-
-
-						//vec4 p1 = (*current)->mass * (*current)->velocity;
-						//vec4 p2 = (*iter)->mass * (*iter)->velocity;
-
-						//printVector4f(p1 + p2);
-
-						//calculateCollision(*current, *iter);
-						//
-						//p1 = (*current)->mass * (*current)->velocity;
-						//p2 = (*iter)->mass * (*iter)->velocity;
-
-						//printVector4f(p1 + p2);
-
-						// printVector4f(newVel);
-						//(*current)->velocity = newVel;	 
-						// (*current)->translate((*current)->velocity*0.001);
-						// (*iter)->velocity = -newVel;
-						// (*iter)->translate((*iter)->velocity*0.001);
-
-
-					}
-				}
-
-				else {
-					acceleration += 0.008*(GAMMA*(*iter).mass)/(r.length3()*r.length3())*r;
-				}
-			}
-
-			++iter;
-		}
-
-		// attraction to 0, 0, 0
-		// acceleration += 0.008*(gamma*1000.0)/(((*current)->position.norm())*(*current)->position.norm())*(-(*current)->position);
-
-		(*current).velocity += acceleration * dt;
-
-		//(*current)->updatePosition();
-		(*current).translate((*current).velocity*dt);
-
-		mat4 model_rotation = (*current).rotation.toRotationMatrix();
-
-		//(*current)->model_matrix.print();
-
-		//printMatrix4f(model_rotation);
-		mat4 modelview = view * (*current).model_matrix * model_rotation;
-
-		glUniformMatrix4fv(uni_modelview_loc, 1, GL_FALSE, (const GLfloat*) modelview.rawData());
-
-		vec4 light_pos(sin(running), cos(0.11*running), -5.0, 1.0);
-		if (!(*current).lightsrc()) {
-			vec4 light = (light_pos - (*current).position);
-			light(V::w) = 0.0;
-			light.normalize();
-			light(V::w) = 1.0;
-
-			glUniform4fv(uni_light_loc, 1, (const GLfloat*) light.rawData());
-		}
-
-
-
-		glUniform1i(uni_lightsrc_loc, (*current).lightsrc() ? 1 : 0);	
-		glBindBuffer(GL_ARRAY_BUFFER, (*current).getVBOid());
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, (*current).getTextureId());
-		glUniform1i(uni_sampler2d_loc, 0);	// needs to be 0 explicitly :D
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, hmap_id);	// heightmap
-		glUniform1i(uni_heightmap_loc, 1);
-
-		//glDrawElements(GL_TRIANGLES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
-		glDrawElements(GL_PATCHES, (*current).getFaceCount()*3, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0)); 
-	}
-*/
 
 	// draw normals for center sphere
 

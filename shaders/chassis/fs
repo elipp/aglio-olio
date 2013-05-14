@@ -1,0 +1,36 @@
+#version 410 core
+
+layout (location = 0) in vec3 WorldPos_FS_in;
+layout (location = 1) in vec3 Normal_FS_in;
+layout (location = 2) in vec2 TexCoord_FS_in; 
+
+layout(location = 0) out vec4 out_frag_color;
+
+uniform mat4 ModelView;
+uniform sampler2D texture_color;
+
+uniform vec4 light_dir;
+uniform vec4 light_pos;
+
+mat3 ModelView3_inv_T = inverse(transpose(mat3(ModelView)));	//upper 3x3
+const vec3 ambient = vec3( 0.02, 0.02, 0.02 );
+
+vec3 light3 = vec3(light_dir);
+float diffuse = 1.0;
+vec3 lightColor = vec3( 0.8, 0.3, 0.3);
+
+
+void main(void)
+{
+	vec4 texColor = texture2D(texture_color, TexCoord_FS_in); 
+
+	float diffuse = clamp( dot(light3, Normal_FS_in), 0.0, 1.0); 
+	vec3 s = normalize(light3 - WorldPos_FS_in);
+	vec3 r = reflect(-s, Normal_FS_in);
+	vec3 v = normalize(-WorldPos_FS_in);	// the worldpos is already transformed to eyespace, so the camera is at (0,0,0)
+	
+	float spec = clamp(dot(r, v), 0.0, 1.0);
+	
+	out_frag_color = clamp((0.1*texColor + diffuse*vec4(1.0, 1.0, 1.0, 1.0)*pow(spec, 5.5) + diffuse * texColor), 0.0, 1.0);
+	//out_frag_color = vec4(1.0, 1.0, 1.0, 1.0);
+}

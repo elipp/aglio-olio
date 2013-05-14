@@ -13,43 +13,53 @@ static const int mask3021 = 0xC9, // 11 00 10 01_2
 static float (*MM_DPPS_XYZ)(__m128 a, __m128 b);
 static float (*MM_DPPS_XYZW)(__m128 a, __m128 b);
 
-//static const float identity_arr[16] = { 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 };
+static const float identity_arr[16] = { 1.0, 0.0, 0.0, 0.0, 
+										0.0, 1.0, 0.0, 0.0, 
+										0.0, 0.0, 1.0, 0.0, 
+										0.0, 0.0, 0.0, 1.0 };
+
+static const float zero_arr[16] = { 0.0, 0.0, 0.0, 0.0,
+									0.0, 0.0, 0.0, 0.0,
+									0.0, 0.0, 0.0, 0.0,
+									0.0, 0.0, 0.0, 0.0 };
+								
 
 const vec4 vec4::zero_const = vec4(ZERO);
-const mat4 mat4::identity_const = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+const mat4 identity_const_mat4 = mat4(identity_arr);
+const mat4 zero_const_mat4 = mat4(zero_arr);
 
 static inline float MM_DPPS_XYZ_SSE(__m128 a, __m128 b) {
-	const m128_f32_union mul = _mm_mul_ps(a, b);
+	const __m128 mul = _mm_mul_ps(a, b);
 	return mul.m128_f32[0]+mul.m128_f32[1]+mul.m128_f32[2];
 }
 
 static inline float MM_DPPS_XYZW_SSE(__m128 a, __m128 b) {
-	const m128_f32_union mul = _mm_mul_ps(a, b);
+	const __m128 mul = _mm_mul_ps(a, b);
 	return mul.m128_f32[0]+mul.m128_f32[1]+mul.m128_f32[2] + mul.m128_f32[3];
 }
 
 static inline float MM_DPPS_XYZ_SSE3(__m128 a, __m128 b) {
-	m128_f32_union mul = _mm_mul_ps(a, b);
+	__m128 mul = _mm_mul_ps(a, b);
 	 mul.m128_f32[3] = 0.0;	// zeroing out a f32 field in a m128 union
 						// generates only two instructions, a fldz and a fstp
-	 mul = _mm_hadd_ps(mul.m128, mul.m128);
-	 mul = _mm_hadd_ps(mul.m128, mul.m128);
+	 mul = _mm_hadd_ps(mul, mul);
+	 mul = _mm_hadd_ps(mul, mul);
 	 return mul.m128_f32[0];
 }
 
 static inline float MM_DPPS_XYZW_SSE3(__m128 a, __m128 b) {
-	m128_f32_union mul = _mm_mul_ps(a, b);
-	mul = _mm_hadd_ps(mul.m128, mul.m128);
-	mul = _mm_hadd_ps(mul.m128, mul.m128);
+	__m128 mul = _mm_mul_ps(a, b);
+	mul = _mm_hadd_ps(mul, mul);
+	mul = _mm_hadd_ps(mul, mul);
 	return mul.m128_f32[0];
 }
 
 static inline float MM_DPPS_XYZ_SSE41(__m128 a, __m128 b) {
-	return m128_f32_union(_mm_dp_ps(a, b, xyz_dot_mask)).m128_f32[0];
+	return _mm_dp_ps(a, b, xyz_dot_mask).m128_f32[0];
 }
 
 static inline float MM_DPPS_XYZW_SSE41(__m128 a, __m128 b) {
-	return m128_f32_union(_mm_dp_ps(a, b, xyzw_dot_mask)).m128_f32[0];
+	return _mm_dp_ps(a, b, xyzw_dot_mask).m128_f32[0];
 }
 
 // fallback
@@ -87,7 +97,7 @@ const char* checkCPUCapabilities() {
 	else { 
 		MM_DPPS_XYZ = MM_DPPS_XYZ_SSE41;
 		MM_DPPS_XYZW = MM_DPPS_XYZW_SSE41;
-		return "NOTE: lin_alg: Using SSE4.1 for dot product computation (_mm_dp_ps).\n";
+		return "NOTE: lin_alg: Using SSE4.1 for dot product computation (_mm_dp_ps, optimal).\n";
 	}
 	
 }
@@ -95,7 +105,7 @@ const char* checkCPUCapabilities() {
 vec4::vec4(float _x, float _y, float _z, float _w) {
 	// must use _mm_setr_ps for this constructor. Note 'r' for reversed.
 	//data = _mm_setr_ps(_x, _y, _z, _w);
-	data.m128 = _mm_set_ps(_w, _z, _y, _x);	// could be faster, haven't tested
+	data = _mm_set_ps(_w, _z, _y, _x);	// could be faster, haven't tested
 
 }
 
@@ -113,7 +123,7 @@ void vec4::operator*=(float scalar) {
 
 	// use xmmintrin
 	// data = _mm_mul_ps(data, _mm_load1_ps(&scalar)); // not quite sure this works
-	data = _mm_mul_ps(data.m128, _mm_set1_ps(scalar));	// the disassembly is pretty much identical between the two though
+	data = _mm_mul_ps(data, _mm_set1_ps(scalar));	// the disassembly is pretty much identical between the two though
 }
 
 vec4 operator*(float scalar, const vec4& v) {
@@ -135,7 +145,7 @@ vec4 vec4::operator*(float scalar) const{
 void vec4::operator/=(float scalar) {
 	// _mm_rcp_ps returns a rough approximation
 	const __m128 scalar_recip = _mm_rcp_ps(_mm_set1_ps(scalar));
-	this->data = _mm_mul_ps(this->data.m128, scalar_recip);
+	this->data = _mm_mul_ps(this->data, scalar_recip);
 
 }
 
@@ -148,7 +158,7 @@ vec4 vec4::operator/(float scalar) const {
 
 void vec4::operator+=(const vec4 &b) {
 	
-	this->data=_mm_add_ps(data.m128, b.data.m128);
+	this->data=_mm_add_ps(data, b.data);
 
 }
 
@@ -161,7 +171,7 @@ vec4 vec4::operator+(const vec4 &b) const {
 }
 
 void vec4::operator-=(const vec4 &b) {
-	this->data=_mm_sub_ps(data.m128, b.data.m128);
+	this->data=_mm_sub_ps(data, b.data);
 }
 
 vec4 vec4::operator-(const vec4 &b) const {
@@ -171,19 +181,19 @@ vec4 vec4::operator-(const vec4 &b) const {
 }
 
 vec4 vec4::operator-() const { 
-	return vec4(_mm_mul_ps(MINUS_ONES, this->data.m128));
+	return vec4(_mm_mul_ps(MINUS_ONES, this->data));
 }
 
 float vec4::length3() const {
 	//return sqrt(_mm_dp_ps(this->data, this->data, xyz_dot_mask).m128_f32[0]);
-	return sqrt(MM_DPPS_XYZ(this->data.m128, this->data.m128));
+	return sqrt(MM_DPPS_XYZ(this->data, this->data));
 
 }
 
 float vec4::length4() const {
 
 	//return sqrt(_mm_dp_ps(this->data, this->data, xyzw_dot_mask).m128_f32[0]);	// includes x,y,z,w in the computation
-	return sqrt(MM_DPPS_XYZW(this->data.m128, this->data.m128));
+	return sqrt(MM_DPPS_XYZW(this->data, this->data));
 
 }
 
@@ -201,7 +211,7 @@ void vec4::normalize() {
 
 	// in debug mode (no optimization whatsoever), stripping the temporary value improved
 	// performance to about 0.06786us/iteration
-	this->data = _mm_mul_ps(this->data.m128, _mm_rcp_ps(_mm_sqrt_ps(_mm_set1_ps(MM_DPPS_XYZ(this->data.m128, this->data.m128)))));
+	this->data = _mm_mul_ps(this->data, _mm_rcp_ps(_mm_sqrt_ps(_mm_set1_ps(MM_DPPS_XYZ(this->data, this->data)))));
 
 }
 
@@ -241,7 +251,7 @@ void* vec4::rawData() const {
 float dot(const vec4 &a, const vec4 &b) {
 	/*__m128 dot = _mm_dp_ps(a.data, b.data, xyz_dot_mask);	
 	return dot.m128_f32[0];	*/
-	return MM_DPPS_XYZ(a.data.m128, b.data.m128);
+	return MM_DPPS_XYZ(a.data, b.data);
 	
 	/* SSE solution
 	__m128 mul = _mm_mul_ps(a.data, b.data);
@@ -273,8 +283,8 @@ vec4 cross(const vec4 &a, const vec4 &b) {
 		
 	return vec4(
 	_mm_sub_ps(
-    _mm_mul_ps(_mm_shuffle_ps(a.data.m128, a.data.m128, mask3021), _mm_shuffle_ps(b.data.m128, b.data.m128, mask3102)),
-    _mm_mul_ps(_mm_shuffle_ps(a.data.m128, a.data.m128, mask3102), _mm_shuffle_ps(b.data.m128, b.data.m128, mask3021))
+    _mm_mul_ps(_mm_shuffle_ps(a.data, a.data, mask3021), _mm_shuffle_ps(b.data, b.data, mask3102)),
+    _mm_mul_ps(_mm_shuffle_ps(a.data, a.data, mask3102), _mm_shuffle_ps(b.data, b.data, mask3021))
   )
   );
 
@@ -305,8 +315,8 @@ mat4::mat4(const float *arr) {
 }
 
 mat4::mat4(const int main_diagonal_val) {
-	mat4 &a = (*this);
-	a.zero();
+	mat4 &a = (*this);	// reference (*this) for easier manipulation
+	a = mat4::zero();
 	a(0,0)=main_diagonal_val;
 	a(1,1)=main_diagonal_val;
 	a(2,2)=main_diagonal_val;
@@ -329,10 +339,10 @@ mat4::mat4(const vec4& c1, const vec4& c2, const vec4& c3, const vec4& c4) {
 // must be passed as references lolz, otherwise the last one will lose its alignment
 
 mat4::mat4(const __m128& c1, const __m128&  c2, const __m128&  c3, const __m128& c4) {
-	data[0] = (m128_f32_union)c1;
-	data[1] = (m128_f32_union)c2;
-	data[2] = (m128_f32_union)c3;
-	data[3] = (m128_f32_union)c4;
+	data[0] = c1;
+	data[1] = c2;
+	data[2] = c3;
+	data[3] = c4;
 }
 
 mat4 mat4::operator* (const mat4& R) const {
@@ -346,7 +356,7 @@ mat4 mat4::operator* (const mat4& R) const {
 	for (int i = 0; i < 4; i++) {
 		for (int j = 0; j < 4; j++) {
 			//ret.data[j].m128_f32[i] = _mm_dp_ps(R.data[j], L.data[i], xyzw_dot_mask).m128_f32[0];
-			ret.data[j].m128_f32[i] = MM_DPPS_XYZW(R.data[j].m128, L.data[i].m128);
+			ret.data[j].m128_f32[i] = MM_DPPS_XYZW(R.data[j], L.data[i]);
 		}
 	}
 	
@@ -379,7 +389,7 @@ vec4 mat4::operator* (const vec4& R) const {
 	const mat4 M = (*this).transposed();
 	vec4 v;
 	for (int i = 0; i < 4; i++) 
-		v(i) = MM_DPPS_XYZW(M.data[i].m128, R.getData().m128);
+		v(i) = MM_DPPS_XYZW(M.data[i], R.getData());
 		//v.getData().m128_f32[i] = _mm_dp_ps(M.data[i], R.getData(), xyzw_dot_mask).m128_f32[0];
 
 	return v;
@@ -402,21 +412,20 @@ vec4 mat4::operator* (const vec4& R) const {
 
 mat4 operator*(float scalar, const mat4& m) {
 	const __m128 scalar_m128 = _mm_set1_ps(scalar);
-	return mat4(_mm_mul_ps(scalar_m128, m.data[0].m128),
-				_mm_mul_ps(scalar_m128, m.data[1].m128),
-				_mm_mul_ps(scalar_m128, m.data[2].m128),
-				_mm_mul_ps(scalar_m128, m.data[3].m128));
+	return mat4(_mm_mul_ps(scalar_m128, m.data[0]),
+				_mm_mul_ps(scalar_m128, m.data[1]),
+				_mm_mul_ps(scalar_m128, m.data[2]),
+				_mm_mul_ps(scalar_m128, m.data[3]));
 
 }
 
-void mat4::zero() {
-	data[0] = data[1] = data[2] = data[3] = ZERO;
-}
 
-
-void mat4::identity() {
+mat4 mat4::identity() {
 	// better design than to do (*this)(0,0) = 1.0 etc
-	(*this) = identity_const;
+	return identity_const_mat4;
+}
+mat4 mat4::zero() {
+	return zero_const_mat4;
 }
 
 
@@ -481,8 +490,7 @@ mat4 mat4::proj_ortho(float left, float right, float bottom, float top, float zN
 	// i.e. that any matrix elements other than the ones used in
 	// a pure orthographic projection matrix are zero.
 		
-	//mat4 M = mat4::identity();
-	mat4 M; M.identity();
+	mat4 M = mat4::identity();
 	
 	M(0,0) = 2.0/(right - left);
 	M(1,1) = 2.0/(top - bottom);
@@ -497,9 +505,8 @@ mat4 mat4::proj_ortho(float left, float right, float bottom, float top, float zN
 
 mat4 mat4::proj_persp(float left, float right, float bottom, float top, float zNear, float zFar) {
 		
-
-	mat4 M;// = mat4::identity();
-	M.identity();
+	mat4 M = mat4::identity();
+	//M.identity();
 	M(0,0) = (2*zNear)/(right-left);
 	M(1,1) = (2*zNear)/(top-bottom);
 	M(2,0) = (right+left)/(right-left);
@@ -529,7 +536,7 @@ mat4 mat4::proj_persp(float fov_radians, float aspect, float zNear, float zFar) 
 
 void mat4::transpose() {
 
-	_MM_TRANSPOSE4_PS(data[0].m128, data[1].m128, data[2].m128, data[3].m128);	// microsoft special in-place transpose macro :P
+	_MM_TRANSPOSE4_PS(data[0], data[1], data[2], data[3]);	// microsoft special in-place transpose macro :P
 
 	/* Implemented as follows: (xmmintrin.h) (no copyright though)
 #define _MM_TRANSPOSE4_PS(row0, row1, row2, row3) {                 \
@@ -552,7 +559,7 @@ void mat4::transpose() {
 mat4 mat4::transposed() const {
 
 	mat4 ret = (*this);	// copying can't be avoided
-	_MM_TRANSPOSE4_PS(ret.data[0].m128, ret.data[1].m128, ret.data[2].m128, ret.data[3].m128);
+	_MM_TRANSPOSE4_PS(ret.data[0], ret.data[1], ret.data[2], ret.data[3]);
 	return ret;
 
 }
@@ -570,10 +577,10 @@ mat4 mat4::inverted() const {
 	// _mm_shuffle_pd(a, a, 1) can be used to swap the hi/lo qwords of a __m128d,
 	// and _mm_shuffle_ps(a, a, 0x4E) for a __m128
 
-	__m128	row0 = m.data[0].m128,
-			row1 = _mm_shuffle_ps(m.data[1].m128, m.data[1].m128, mask1032),
-			row2 = m.data[2].m128,
-			row3 = _mm_shuffle_ps(m.data[3].m128, m.data[3].m128, mask1032);
+	__m128	row0 = m.data[0],
+			row1 = _mm_shuffle_ps(m.data[1], m.data[1], mask1032),
+			row2 = m.data[2],
+			row3 = _mm_shuffle_ps(m.data[3], m.data[3], mask1032);
 
 	__m128 det, tmp1;
 
@@ -678,7 +685,7 @@ mat4 mat4::scale(const vec4 &v) {
 	return m;
 }
 mat4 mat4::translation(const vec4 &v) {
-	mat4 m = identity_const;
+	mat4 m = mat4::identity();
 	m.assignToColumn(3, v);
 	return m;
 }
@@ -692,7 +699,7 @@ Quaternion::Quaternion(float x, float y, float z, float w) {
 Quaternion::Quaternion() { data=QUAT_NO_ROTATION; }
 
 Quaternion Quaternion::conjugate() const {
-	return Quaternion(_mm_mul_ps(this->data.m128, QUAT_CONJUGATE));
+	return Quaternion(_mm_mul_ps(this->data, QUAT_CONJUGATE));
 }
 
 Quaternion Quaternion::fromAxisAngle(float x, float y, float z, float angle) {
@@ -703,7 +710,7 @@ Quaternion Quaternion::fromAxisAngle(float x, float y, float z, float angle) {
 	vec4 axis(x, y, z, 0);
 	axis.normalize();
 
-	q.data = _mm_mul_ps(sin_angle, axis.getData().m128);
+	q.data = _mm_mul_ps(sin_angle, axis.getData());
 	q(Q::w) = cos(angle);
 	
 	return q;
@@ -716,9 +723,9 @@ void Quaternion::normalize() {
 
 	Quaternion &Q = (*this);
 	//const float mag_squared = _mm_dp_ps(Q.data, Q.data, xyzw_dot_mask).m128_f32[0];
-	const float mag_squared = MM_DPPS_XYZW(Q.data.m128, Q.data.m128);
+	const float mag_squared = MM_DPPS_XYZW(Q.data, Q.data);
 	if (fabs(mag_squared-1.0) > 0.001) {	// to prevent calculations from exploding
-		Q.data = _mm_mul_ps(Q.data.m128, _mm_set1_ps(1.0/sqrt(mag_squared)));
+		Q.data = _mm_mul_ps(Q.data, _mm_set1_ps(1.0/sqrt(mag_squared)));
 	}
 
 }
@@ -734,13 +741,13 @@ Quaternion Quaternion::operator*(const Quaternion &b) const {
 
 	Quaternion ret(
 	_mm_sub_ps(
-	_mm_mul_ps(_mm_shuffle_ps(a.data.m128, a.data.m128, mask3021), _mm_shuffle_ps(b.data.m128, b.data.m128, mask3102)),
-	_mm_mul_ps(_mm_shuffle_ps(a.data.m128, a.data.m128, mask3102), _mm_shuffle_ps(b.data.m128, b.data.m128, mask3021))));
+	_mm_mul_ps(_mm_shuffle_ps(a.data, a.data, mask3021), _mm_shuffle_ps(b.data, b.data, mask3102)),
+	_mm_mul_ps(_mm_shuffle_ps(a.data, a.data, mask3102), _mm_shuffle_ps(b.data, b.data, mask3021))));
 	
 	ret += a.element(Q::w)*b + b.element(Q::w)*a;
 
 	//ret(Q::w) = a.data.m128_f32[Q::w]*b.data.m128_f32[Q::w] - _mm_dp_ps(a.data, b.data, xyz_dot_mask).m128_f32[0];
-	ret(Q::w) = a.element(Q::w) * b.element(Q::w) - MM_DPPS_XYZ(a.data.m128, b.data.m128);
+	ret(Q::w) = a.element(Q::w) * b.element(Q::w) - MM_DPPS_XYZ(a.data, b.data);
 	return ret;
 
 }
@@ -750,20 +757,20 @@ void Quaternion::operator*=(const Quaternion &b) {
 }
 
 Quaternion Quaternion::operator*(float scalar) const {
-	return Quaternion(_mm_mul_ps(_mm_set1_ps(scalar), data.m128));
+	return Quaternion(_mm_mul_ps(_mm_set1_ps(scalar), data));
 }
 
 void Quaternion::operator*=(float scalar) {
-	this->data = _mm_mul_ps(_mm_set1_ps(scalar), data.m128);
+	this->data = _mm_mul_ps(_mm_set1_ps(scalar), data);
 }
 
 
 Quaternion Quaternion::operator+(const Quaternion& b) const {
-	return Quaternion(_mm_add_ps(this->data.m128, b.data.m128));
+	return Quaternion(_mm_add_ps(this->data, b.data));
 }
 
 void Quaternion::operator+=(const Quaternion &b) {
-	this->data = _mm_add_ps(this->data.m128, b.data.m128);
+	this->data = _mm_add_ps(this->data, b.data);
 }
 
 // a name such as "applyQuaternionRotation" would be much more fitting,
@@ -773,7 +780,7 @@ vec4 Quaternion::operator*(const vec4& b) const {
 
 	vec4 v(b);
 	v.normalize();
- 	Quaternion vec_q(b.getData().m128), res_q;
+ 	Quaternion vec_q(b.getData()), res_q;
 	vec_q(Q::w) = 0.0;
 
 	res_q = vec_q * (*this).conjugate();
@@ -810,5 +817,5 @@ mat4 Quaternion::toRotationMatrix() const {
 }
 
 Quaternion operator*(float scalar, const Quaternion& q) {
-	return Quaternion(_mm_mul_ps(_mm_set1_ps(scalar), q.getData().m128));
+	return Quaternion(_mm_mul_ps(_mm_set1_ps(scalar), q.getData()));
 }
