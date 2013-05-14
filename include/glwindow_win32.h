@@ -20,8 +20,8 @@
 
 void window_swapbuffers();
 
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);	// declare wndproc for main window
-LRESULT CALLBACK WndProc_child(HWND, UINT, WPARAM, LPARAM);	// and the same for the child window.
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+LRESULT CALLBACK WndProc_child(HWND, UINT, WPARAM, LPARAM);
 
 BOOL CreateGLWindow(char* title, int width, int height, int bits, bool fullscreenflag);
 void KillGLWindow(void);

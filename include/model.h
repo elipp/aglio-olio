@@ -7,10 +7,13 @@
 
 #define ALIGNMENT 16
 
+#ifdef _WIN32
+__declspec(align(ALIGNMENT)) // to ensure 16-byte alignment in memory
+#endif
 class Model {
 
 public:	
-	// apparently, the default allocator can return misaligned addresses, need to overload
+	// apparently, the default allocator can still return misaligned addresses, need to overload
 	mat4 model_matrix;
 	Quaternion rotation;
 	vec4 position;

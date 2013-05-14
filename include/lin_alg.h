@@ -54,28 +54,16 @@ class vec4;
 class mat4;
 class Quaternion;
 
-union m128_f32_union {
-	__m128 m128;	// this is kinda.. bad. on windows, this results in a union within a union.
-	float m128_f32[4];
-	m128_f32_union(const __m128 a) {
-		m128 = a;
-	}
-	m128_f32_union& operator=(const __m128 a) { m128 = a; return *this; }
-	m128_f32_union() {}
-};
-
-
 #ifdef _WIN32
 __declspec(align(16)) // to ensure 16-byte alignment in memory
 #endif
 class vec4 {		
-	m128_f32_union data;
+	__m128 data;
 	static const vec4 zero_const;
 public:
-	vec4(const m128_f32_union &a) : data(a) {} ;
 	vec4(const __m128 a) { data = a; }
 	// this is necessary for the mat4 class calls
-	inline m128_f32_union getData() const { return data; }
+	inline __m128 getData() const { return data; }
 	vec4();	
 	vec4(float _x, float _y, float _z, float _w);	
 	vec4(const float * const a);
@@ -181,10 +169,15 @@ __declspec(align(16)) // to ensure 16-byte alignment in memory
 #endif
 class mat4 {	// column major 
 
-	m128_f32_union data[4];	// each holds a column vector
-	static const mat4 identity_const;
-
+	__m128 data[4];	// each holds a column vector
+	
 public:
+	static mat4 identity();
+	static mat4 zero();
+	
+	static mat4 proj_ortho(float left, float right, float bottom, float top, float zNear, float zFar);
+	static mat4 proj_persp(float left, float right, float bottom, float top, float zNear, float zFar);
+	static mat4 proj_persp(float fov_radians, float aspect, float zNear, float zFar); // gluPerspective-like
 
 	inline float& operator()(int column, int row) { return data[column].m128_f32[row]; }
 	inline float elementAt(int column, int row) const { return data[column].m128_f32[row]; }
@@ -204,8 +197,6 @@ public:
 	mat4(const vec4& c1, const vec4& c2, const vec4& c3, const vec4& c4);
 	mat4(const __m128& c1, const __m128& c2, const __m128& c3, const __m128& c4);
 
-	void zero();
-	void identity();
 
 
 	void transpose();
@@ -232,10 +223,7 @@ public:
 	void printRaw() const;	// prints elements in actual memory order.
 
 	void print();
-	static mat4 proj_ortho(float left, float right, float bottom, float top, float zNear, float zFar);
-	static mat4 proj_persp(float left, float right, float bottom, float top, float zNear, float zFar);
-	// gluPerspective-esque
-	static mat4 proj_persp(float fov_radians, float aspect, float zNear, float zFar);
+
 
 	friend mat4 operator*(float scalar, const mat4& m);
 
@@ -298,17 +286,17 @@ namespace Q {
 __declspec(align(16)) // to ensure 16-byte alignment in memory
 #endif
 class Quaternion {
-	m128_f32_union data;
+	__m128 data;
 public:
 
 	Quaternion(float x, float y, float z, float w);
-	Quaternion(const __m128 d) { data.m128 = d;};
+	Quaternion(const __m128 d) { data = d;};
 	Quaternion();
 	
 	inline float element(int i) const { return data.m128_f32[i]; }
 	inline float& operator()(int i) { return data.m128_f32[i]; }
 	
-	inline m128_f32_union getData() const { return data; }
+	inline __m128 getData() const { return data; }
 
 	void normalize();
 	Quaternion conjugate() const;
